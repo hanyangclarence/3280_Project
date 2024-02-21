@@ -211,5 +211,6 @@ class SoundRecorderApp:
             # No current selection, ensure the "Play" button is disabled
             self.play_button.config(state=tk.DISABLED)
             self.last_selected_index = -1  # Reset the last selected index
+    
 
 
