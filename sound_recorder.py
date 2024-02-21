@@ -68,6 +68,8 @@ class SoundRecorderApp:
 
         filename = f"recording_{int(time.time())}.wav"
         filepath = os.path.join(self.save_dir, filename)
+
+        # TODO: Need to implement this part by ourself
         wf = wave.open(filepath, 'wb')
         wf.setnchannels(self.channels)
         wf.setsampwidth(self.p.get_sample_size(self.format))
