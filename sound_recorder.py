@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
+from tkinter import ttk
 import os
 
 import numpy as np
@@ -14,7 +15,7 @@ from PIL import Image, ImageTk
 
 
 class SoundRecorderApp:
-    def __init__(self, master, save_dir, chunk_size, channels, sampling_rate):
+    def __init__(self, master, save_dir, chunk_size, channels, sampling_rate, progress_bar_color):
         self.master = master
         master.title('Sound Recorder')
 
@@ -44,6 +45,8 @@ class SoundRecorderApp:
         # set folder that stores recorded audios
         self.save_dir = os.path.join(os.getcwd(), save_dir)
         os.makedirs(save_dir, exist_ok=True)
+
+        self.progress_bar_color = np.asarray(progress_bar_color, dtype=np.uint8)[None, None]  # (1, 1, 4)
 
         # Load existing recordings
         self.load_all_recordings()
@@ -115,6 +118,7 @@ class SoundRecorderApp:
             self.playing_stream.write(data)
             self.current_frame += 1
             print(f'{self.current_frame}/{len(self.frames)}')
+            self.update_progress_bar()
         if not self.is_paused:
             # Finished playing, set to starting point by default
             self.setup_replay()
@@ -126,27 +130,36 @@ class SoundRecorderApp:
         self.play_pause_button.config(state=tk.NORMAL)
         self.play_pause_button.config(text="Play")
 
+        self.update_progress_bar()
+
     def _setup_gui(self, master):
         # Set the initial size of the window
-        master.geometry('600x400')  # Width x Height in pixels
+        master.geometry('1000x600')  # Width x Height in pixels
 
-        # Create frames
-        self.left_frame = tk.Frame(master)
-        self.right_frame = tk.Frame(master)
+        # Create the upper and lower frames
+        self.upper_frame = tk.Frame(master, height=250, width=1000)
+        self.upper_frame.pack(side="top", fill="both", expand=True)
+        self.upper_frame.pack_propagate(False)  # Prevent the frame from resizing to fit its contents
 
-        # Position frames
-        self.left_frame.grid(row=0, column=0, sticky="nsew")
-        self.right_frame.grid(row=0, column=1, sticky="nsew")
+        self.lower_frame = tk.Frame(master, height=350, width=1000)
+        self.lower_frame.pack(side="bottom", fill="both", expand=True)
+        self.lower_frame.pack_propagate(False)  # Prevent the frame from resizing to fit its contents
 
-        # Configure grid layout
-        master.grid_columnconfigure(0, weight=1)
-        master.grid_columnconfigure(1, weight=1)
-        master.grid_rowconfigure(0, weight=1)
+        # Subdivide the upper frame into left and right parts
+        self.left_frame = tk.Frame(self.upper_frame, borderwidth=2, relief="groove")
+        self.left_frame.pack(side="left", fill="both", expand=True)
+
+        self.right_frame = tk.Frame(self.upper_frame, borderwidth=2, relief="groove")
+        self.right_frame.pack(side="right", fill="both", expand=True)
 
         # Setup widget
         # Listbox in the left frame
         self.recordings_listbox = tk.Listbox(self.left_frame)
-        self.recordings_listbox.pack(expand=True, fill='both')
+        self.recordings_listbox.pack(expand=True, fill='both', side="left")
+        # Bind the selection event to the listbox
+        # This allows enabling and disabling "play" button when selecting items in the list
+        self.last_selected_index = -1
+        self.recordings_listbox.bind('<<ListboxSelect>>', self.on_listbox_select)
 
         # Buttons in the right frame
         self.record_button = tk.Button(self.right_frame, text="Record", command=self.start_recording)
@@ -158,10 +171,16 @@ class SoundRecorderApp:
         self.play_pause_button = tk.Button(self.right_frame, text="Play", command=self.toggle_play_pause, state=tk.DISABLED)
         self.play_pause_button.pack(fill='x')
 
-        # Bind the selection event to the listbox
-        # This allows enabling and disabling "play" button when selecting items in the list
-        self.last_selected_index = -1
-        self.recordings_listbox.bind('<<ListboxSelect>>', self.on_listbox_select)
+        # Waveform visualization at the lower frame
+        self.audio_visualize_image = None
+        self.photo_image = None
+        self.visualization_frame = tk.Label(self.lower_frame)
+        self.visualization_frame.pack(fill='both', expand=True)
+
+        # Add a progress bar
+        self.progress_bar = ttk.Progressbar(self.lower_frame, orient='horizontal', mode='determinate')
+        self.progress_bar.pack(side='bottom', fill='x', pady=10)
+        self.progress_bar['maximum'] = 1000
 
     def on_listbox_select(self, event):
         widget = event.widget
@@ -206,6 +225,8 @@ class SoundRecorderApp:
         selected_index = self.recordings_listbox.curselection()[0]
         selected_filename = self.recordings_listbox.get(selected_index)
 
+        print(f'Load selected file: {selected_filename}')
+
         filepath = os.path.join(self.save_dir, selected_filename)
 
         # TODO: load the audio into ndarray with our own function
@@ -234,6 +255,8 @@ class SoundRecorderApp:
         wf.close()
 
         self.plot_waveform()
+        self.update_visualize_image()
+        self.update_progress_bar()
 
     def cleanup_selected_audio(self):
         if self.playing_stream is not None:
@@ -242,14 +265,30 @@ class SoundRecorderApp:
         self.current_frame = 0
         self.frames = []
 
+        print('Selected file cleaned up')
+
         self.audio_sampling_rate = None
         self.audio_array = None
+
+        # Clean up the visualization image
+        self.audio_visualize_image = None
+        self.photo_image = None
+        self.visualization_frame.configure(image=None)
 
     def plot_waveform(self):
         # Visualize the waveform as an ndarray
         t = np.arange(len(self.audio_array)) / self.audio_sampling_rate  # Time axis
-        plt.figure(figsize=(10, 4))
-        plt.plot(t, self.audio_array)
+
+        # Create the plot
+        fig, ax = plt.subplots(figsize=(10, 3))
+        # Plot the waveform
+        ax.plot(t, self.audio_array, linewidth=1)
+
+        ax.axis('off')
+        ax.set_xlim(min(t), max(t))
+        ax.set_ylim(min(self.audio_array), max(self.audio_array))
+        # Remove padding around the plot
+        plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
         # Save the figure to a buffer
         buf = io.BytesIO()
@@ -265,6 +304,23 @@ class SoundRecorderApp:
         # Close the buffer
         buf.close()
 
+        self.audio_visualize_image = image_array
+
+        print(f'Draw visualization image of shape: {self.audio_visualize_image.shape}')
+
+    def update_visualize_image(self):
+        # Convert to PIL Image
+        image = Image.fromarray(self.audio_visualize_image)
+
+        # Convert to Tkinter PhotoImage
+        self.photo_image = ImageTk.PhotoImage(image)
+
+        # Update the image to UI
+        self.visualization_frame.configure(image=self.photo_image)
+
+    def update_progress_bar(self):
+        current_pos = int(self.current_frame / len(self.frames) * 1000)
+        self.progress_bar['value'] = current_pos
 
 
 
