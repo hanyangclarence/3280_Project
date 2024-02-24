@@ -11,6 +11,7 @@ import wave
 import librosa
 import soundfile
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import io
 from PIL import Image, ImageTk
 
@@ -60,7 +61,11 @@ class SoundRecorderApp:
         self.record_button.config(state=tk.DISABLED)
         self.play_pause_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
+        self.visualization_frame.pack_forget()
+        self.canvas_widget.get_tk_widget().pack()
         threading.Thread(target=self._record).start()
+
+        # threading.Thread(target=self.realtime_plot_waveform()).start()
 
     def _record(self):
         stream = self.p.open(
@@ -73,11 +78,13 @@ class SoundRecorderApp:
         print("Recording started")
 
         frames = []
-
+        count = 0
         while self.recording:
+            count +=1
             data = stream.read(self.chunk_size)
             frames.append(data)
-
+            if count % 5 ==0:
+                self.realtime_plot_waveform(frames)
         stream.stop_stream()
         stream.close()
 
@@ -99,6 +106,12 @@ class SoundRecorderApp:
         self.recording = False
         self.record_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
+        self.ax.clear()
+        self.ax.axis('off')
+        self.ax.axhline(y=0, color='black', alpha=0)
+        self.canvas_widget.draw()
+        self.canvas_widget.get_tk_widget().pack_forget()
+        self.visualization_frame.pack(fill='both', expand=True)
 
     def load_all_recordings(self):
         self.recordings_listbox.delete(0, tk.END)
@@ -136,6 +149,17 @@ class SoundRecorderApp:
         self.play_pause_button.config(text="Play")
 
         self.update_progress_bar()
+    def realtime_plot_waveform(self,frames):
+        leng = 500
+        int_frames = np.zeros((leng, ), dtype=np.int16)
+        for i in range(min(leng,len(frames))):
+            int_frames[leng-i-1] = np.frombuffer(frames[len(frames)-i-1], dtype=np.int16)[0]
+        self.ax.clear()
+        self.ax.axis('off')
+        self.ax.set_ylim(-5000, 5000)
+        self.ax.plot(int_frames, color='gray')
+        # self.ax.vlines(range(len(int_frames)), 0, int_frames, color='blue', alpha=1,linewidths=1)
+        self.canvas_widget.draw()
 
     def _setup_gui(self, master):
         # Set the initial size of the window
@@ -165,6 +189,13 @@ class SoundRecorderApp:
         # This allows enabling and disabling "play" button when selecting items in the list
         self.last_selected_index = -1
         self.recordings_listbox.bind('<<ListboxSelect>>', self.on_listbox_select)
+
+        self.ax = None
+        self.fig, self.ax = plt.subplots()
+        self.ax.axis('off')
+        self.fig.patch.set_facecolor('gray')
+        self.fig.patch.set_alpha(0.12)
+        self.canvas_widget = FigureCanvasTkAgg(self.fig, master=self.lower_frame)
 
         # Buttons in the right frame
         self.record_button = tk.Button(self.right_frame, text="Record", command=self.start_recording)
