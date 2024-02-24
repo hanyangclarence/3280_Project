@@ -189,7 +189,6 @@ class SoundRecorderApp:
         self.recordings_listbox.bind('<<ListboxSelect>>', self.on_listbox_select)
 
     def on_listbox_select(self, event):
-        # Get the listbox widget
         widget = event.widget
         current_selection = widget.curselection()
 
@@ -197,18 +196,18 @@ class SoundRecorderApp:
         if current_selection:
             current_index = int(current_selection[0])
 
-            # Check if the current selection is the same as the last selection
+            # If the current selection is the same as the last selection
             if current_index == self.last_selected_index:
-                # Deselect the item and disable the "Play" button
+                # Clear the listbox and disable the corresponding buttons
                 widget.selection_clear(current_index)
                 self.play_button.config(state=tk.DISABLED)
                 self.last_selected_index = -1  # Reset the last selected index
             else:
-                # Update the last selected index and enable the "Play" button
+                # An audio is selected, enable certain buttons
                 self.last_selected_index = current_index
                 self.play_button.config(state=tk.NORMAL)
         else:
-            # No current selection, ensure the "Play" button is disabled
+            # No current selection
             self.play_button.config(state=tk.DISABLED)
             self.last_selected_index = -1  # Reset the last selected index
     
