@@ -8,6 +8,9 @@ import threading
 import time
 import wave
 import librosa
+import matplotlib.pyplot as plt
+import io
+from PIL import Image, ImageTk
 
 
 class SoundRecorderApp:
@@ -230,6 +233,8 @@ class SoundRecorderApp:
             data = wf.readframes(self.chunk_size)
         wf.close()
 
+        self.plot_waveform()
+
     def cleanup_selected_audio(self):
         if self.playing_stream is not None:
             self.playing_stream.stop_stream()
@@ -240,6 +245,25 @@ class SoundRecorderApp:
         self.audio_sampling_rate = None
         self.audio_array = None
 
+    def plot_waveform(self):
+        # Visualize the waveform as an ndarray
+        t = np.arange(len(self.audio_array)) / self.audio_sampling_rate  # Time axis
+        plt.figure(figsize=(10, 4))
+        plt.plot(t, self.audio_array)
+
+        # Save the figure to a buffer
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+
+        # Convert buffer to PIL Image
+        image = Image.open(buf)
+
+        # Convert PIL Image to NumPy array
+        image_array = np.array(image)   # shape (400, 1000), dtype = uint8
+
+        # Close the buffer
+        buf.close()
 
 
 
