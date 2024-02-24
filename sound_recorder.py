@@ -9,13 +9,14 @@ import threading
 import time
 import wave
 import librosa
+import soundfile
 import matplotlib.pyplot as plt
 import io
 from PIL import Image, ImageTk
 
 
 class SoundRecorderApp:
-    def __init__(self, master, save_dir, chunk_size, channels, sampling_rate, progress_bar_color):
+    def __init__(self, master, save_dir, chunk_size, channels, sampling_rate):
         self.master = master
         master.title('Sound Recorder')
 
@@ -32,8 +33,9 @@ class SoundRecorderApp:
         self.p = pyaudio.PyAudio()
 
         # About loading an audio, and storing it into memory for playing or manipulation
-        self.audio_array: np.ndarray
-        self.audio_sampling_rate: int
+        self.selected_filename = None
+        self.audio_array: np.ndarray = None
+        self.audio_sampling_rate = None
         self.playing_stream = None
         self.frames = []  # To store frames of the audio file for playback
         self.current_frame = 0  # To keep track of the current frame during playback
@@ -46,7 +48,9 @@ class SoundRecorderApp:
         self.save_dir = os.path.join(os.getcwd(), save_dir)
         os.makedirs(save_dir, exist_ok=True)
 
-        self.progress_bar_color = np.asarray(progress_bar_color, dtype=np.uint8)[None, None]  # (1, 1, 4)
+        # set up about audio trimming
+        self.start_frame = None
+        self.end_frame = None
 
         # Load existing recordings
         self.load_all_recordings()
@@ -102,7 +106,9 @@ class SoundRecorderApp:
             if file.endswith(".wav"):
                 self.recordings_listbox.insert(tk.END, file)
 
-    def toggle_play_pause(self):
+    def toggle_play_pause(self, event=None):
+        if self.audio_array is None:
+            return
         if self.is_paused:
             self.is_paused = False
             self.play_pause_button.config(text="Pause")
@@ -113,18 +119,17 @@ class SoundRecorderApp:
             self.play_pause_button.config(text="Play")
 
     def play_frames_from_current(self):
-        while self.current_frame < len(self.frames) and not self.is_paused:
+        while not self.is_paused and self.current_frame < self.end_frame:
             data = self.frames[self.current_frame]
             self.playing_stream.write(data)
             self.current_frame += 1
-            print(f'{self.current_frame}/{len(self.frames)}')
             self.update_progress_bar()
-        if not self.is_paused:
-            # Finished playing, set to starting point by default
+        if not self.is_paused and self.audio_array is not None:
+            # Playing reach the end
             self.setup_replay()
 
     def setup_replay(self):
-        self.current_frame = 0
+        self.current_frame = self.start_frame
         self.is_paused = True
 
         self.play_pause_button.config(state=tk.NORMAL)
@@ -170,17 +175,25 @@ class SoundRecorderApp:
 
         self.play_pause_button = tk.Button(self.right_frame, text="Play", command=self.toggle_play_pause, state=tk.DISABLED)
         self.play_pause_button.pack(fill='x')
+        self.master.bind("<space>", self.toggle_play_pause)
+
+        self.save_button = tk.Button(self.right_frame, text='Save', command=self.save_trimmed_audio, state=tk.DISABLED)
+        self.save_button.pack(fill='x')
 
         # Waveform visualization at the lower frame
         self.audio_visualize_image = None
         self.photo_image = None
         self.visualization_frame = tk.Label(self.lower_frame)
         self.visualization_frame.pack(fill='both', expand=True)
+        # Bind the visualization image to a click event to collect the click position
+        self.visualization_frame.bind("<Button-1>", self.on_left_mouse_click_image)
+        self.visualization_frame.bind("<Button-3>", self.on_right_mouse_click_image)
 
         # Add a progress bar
         self.progress_bar = ttk.Progressbar(self.lower_frame, orient='horizontal', mode='determinate')
         self.progress_bar.pack(side='bottom', fill='x', pady=10)
         self.progress_bar['maximum'] = 1000
+        self.progress_bar.bind("<Button-1>", self.on_left_mouse_click_progressbar)
 
     def on_listbox_select(self, event):
         widget = event.widget
@@ -193,13 +206,15 @@ class SoundRecorderApp:
                 # An audio is selected, enable certain buttons
                 self.last_selected_index = current_index
 
-                # load the audio into playable
+                # cleanup previous loaded audio and load the new audio into playable
+                self.cleanup_selected_audio()
                 self.load_selected_audio()
 
                 self.play_pause_button.config(state=tk.NORMAL)
                 self.play_pause_button.config(text="Play")
                 self.record_button.config(state=tk.DISABLED)
                 self.stop_button.config(state=tk.DISABLED)
+                self.save_button.config(state=tk.DISABLED)
 
                 return
 
@@ -210,6 +225,7 @@ class SoundRecorderApp:
         self.play_pause_button.config(state=tk.DISABLED)
         self.play_pause_button.config(text="Play")
         self.record_button.config(state=tk.NORMAL)
+        self.save_button.config(state=tk.DISABLED)
 
         # remove the loaded audio
         self.cleanup_selected_audio()
@@ -227,6 +243,7 @@ class SoundRecorderApp:
 
         print(f'Load selected file: {selected_filename}')
 
+        self.selected_filename = selected_filename
         filepath = os.path.join(self.save_dir, selected_filename)
 
         # TODO: load the audio into ndarray with our own function
@@ -254,11 +271,20 @@ class SoundRecorderApp:
             data = wf.readframes(self.chunk_size)
         wf.close()
 
+        self.start_frame = 0
+        self.end_frame = len(self.frames)
+
         self.plot_waveform()
         self.update_visualize_image()
         self.update_progress_bar()
 
     def cleanup_selected_audio(self):
+        if self.audio_array is None:
+            self.progress_bar['value'] = 0
+            return
+
+        self.is_paused = True
+
         if self.playing_stream is not None:
             self.playing_stream.stop_stream()
             self.playing_stream.close()
@@ -269,11 +295,17 @@ class SoundRecorderApp:
 
         self.audio_sampling_rate = None
         self.audio_array = None
+        self.start_frame = None
+        self.end_frame = None
+        self.selected_filename = None
 
         # Clean up the visualization image
         self.audio_visualize_image = None
         self.photo_image = None
         self.visualization_frame.configure(image=None)
+
+        # Clean up progress bar
+        self.update_progress_bar()
 
     def plot_waveform(self):
         # Visualize the waveform as an ndarray
@@ -309,8 +341,14 @@ class SoundRecorderApp:
         print(f'Draw visualization image of shape: {self.audio_visualize_image.shape}')
 
     def update_visualize_image(self):
+        img_start_idx = int(self.start_frame / len(self.frames) * 1000)
+        img_end_idx = int(self.end_frame / len(self.frames) * 1000)
+        mask = np.ones_like(self.audio_visualize_image, dtype=np.float32)
+        mask[:, :img_start_idx] = 0.5
+        mask[:, img_end_idx:] = 0.5
+
         # Convert to PIL Image
-        image = Image.fromarray(self.audio_visualize_image)
+        image = Image.fromarray((self.audio_visualize_image * mask).astype(np.uint8))
 
         # Convert to Tkinter PhotoImage
         self.photo_image = ImageTk.PhotoImage(image)
@@ -319,8 +357,81 @@ class SoundRecorderApp:
         self.visualization_frame.configure(image=self.photo_image)
 
     def update_progress_bar(self):
-        current_pos = int(self.current_frame / len(self.frames) * 1000)
+        current_pos = int(self.current_frame / len(self.frames) * 1000) if len(self.frames) > 0 else 0
         self.progress_bar['value'] = current_pos
+
+    def on_left_mouse_click_progressbar(self, event):
+        if self.audio_array is None:  # If no audio is loaded
+            return
+        clicked_frame = int(event.x / 1000 * len(self.frames))
+        clicked_frame = max(self.start_frame, clicked_frame)
+        clicked_frame = min(self.end_frame, clicked_frame)
+        self.current_frame = clicked_frame
+        self.update_progress_bar()
+        print(f'current frame update: {self.current_frame}')
+
+    def on_left_mouse_click_image(self, event):
+        if self.audio_array is None:  # If no audio is loaded
+            return
+        cut_frame = int(event.x / 1000 * len(self.frames))
+        self.start_frame = min(cut_frame, self.end_frame)
+        self.update_visualize_image()
+
+        # update the progressbar accordingly
+        self.current_frame = max(self.current_frame, self.start_frame)
+        self.update_progress_bar()
+
+        print(f'trim: start: {self.start_frame}, end: {self.end_frame}')
+
+        # If the audio is trimmed, allow saving
+        if self.start_frame != 0 or self.end_frame != len(self.frames):
+            if self.start_frame < self.end_frame:
+                self.save_button.config(state=tk.NORMAL)
+                return
+        self.save_button.config(state=tk.DISABLED)
+
+    def on_right_mouse_click_image(self, event):
+        if self.audio_array is None:  # If no audio is loaded
+            return
+        cut_frame = int(event.x / 1000 * len(self.frames))
+        self.end_frame = max(cut_frame, self.start_frame)
+        self.update_visualize_image()
+
+        # update the progressbar accordingly
+        self.current_frame = min(self.current_frame, self.end_frame)
+        self.update_progress_bar()
+
+        print(f'trim: start: {self.start_frame}, end: {self.end_frame}')
+
+        # If the audio is trimmed, allow saving
+        if self.start_frame != 0 or self.end_frame != len(self.frames):
+            if self.start_frame < self.end_frame:
+                self.save_button.config(state=tk.NORMAL)
+                return
+        self.save_button.config(state=tk.DISABLED)
+
+    def save_trimmed_audio(self):
+        old_filename = self.selected_filename.split('.')[0]
+        new_filename = old_filename + '_trimmed.wav'
+        save_path = os.path.join(self.save_dir, new_filename)
+
+        # if the filename already exists
+        audio_id = 0
+        while os.path.exists(save_path):
+            audio_id += 1
+            new_filename = old_filename + f'_trimmed({audio_id}).wav'
+            save_path = os.path.join(self.save_dir, new_filename)
+
+        print(f'The trimmed audio is saved into: {save_path}')
+
+        wav_start_idx = int(self.start_frame / len(self.frames) * self.audio_array.shape[0])
+        wav_end_idx = int(self.end_frame / len(self.frames) * self.audio_array.shape[0])
+        # TODO: replace this with our own function
+        soundfile.write(save_path, self.audio_array[wav_start_idx:wav_end_idx], samplerate=self.audio_sampling_rate)
+
+        # Update the listbox
+        self.load_all_recordings()
+
 
 
 
