@@ -65,7 +65,6 @@ class SoundRecorderApp:
         self.canvas_widget.get_tk_widget().pack()
         threading.Thread(target=self._record).start()
 
-        # threading.Thread(target=self.realtime_plot_waveform()).start()
 
     def _record(self):
         stream = self.p.open(
