@@ -1,19 +1,22 @@
 import tkinter as tk
 from tkinter import messagebox
 import os
+
+import numpy as np
 import pyaudio
 import threading
 import time
 import wave
+import librosa
 
 
 class SoundRecorderApp:
-    def __init__(self, master, save_dir, chunk, channels, sampling_rate):
+    def __init__(self, master, save_dir, chunk_size, channels, sampling_rate):
         self.master = master
         master.title('Sound Recorder')
 
         # Initialize PyAudio parameters
-        self.chunk = chunk
+        self.chunk_size = chunk_size
         self.format = pyaudio.paInt16
         self.channels = channels
         self.rate = sampling_rate
@@ -24,7 +27,9 @@ class SoundRecorderApp:
         # PyAudio instance
         self.p = pyaudio.PyAudio()
 
-        # About pausing and replaying
+        # About loading an audio, and storing it into memory for playing or manipulation
+        self.audio_array: np.ndarray
+        self.audio_sampling_rate: int
         self.playing_stream = None
         self.frames = []  # To store frames of the audio file for playback
         self.current_frame = 0  # To keep track of the current frame during playback
@@ -38,12 +43,12 @@ class SoundRecorderApp:
         os.makedirs(save_dir, exist_ok=True)
 
         # Load existing recordings
-        self.load_recordings()
+        self.load_all_recordings()
 
     def start_recording(self):
         self.recording = True
         self.record_button.config(state=tk.DISABLED)
-        self.play_button.config(state=tk.DISABLED)
+        self.play_pause_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
         threading.Thread(target=self._record).start()
 
@@ -53,14 +58,14 @@ class SoundRecorderApp:
             channels=self.channels,
             rate=self.rate,
             input=True,
-            frames_per_buffer=self.chunk
+            frames_per_buffer=self.chunk_size
         )
         print("Recording started")
 
         frames = []
 
         while self.recording:
-            data = stream.read(self.chunk)
+            data = stream.read(self.chunk_size)
             frames.append(data)
 
         stream.stop_stream()
@@ -78,75 +83,45 @@ class SoundRecorderApp:
         wf.close()
 
         print("Recording stopped")
-        self.load_recordings()
+        self.load_all_recordings()
 
     def stop_recording(self):
         self.recording = False
         self.record_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
 
-    def play_last_recording(self):
-        if not self.recordings_listbox.curselection():
-            messagebox.showerror("Error", "Please select a recording to play.")
-            return
-        selected_index = self.recordings_listbox.curselection()[0]
-        selected_filename = self.recordings_listbox.get(selected_index)
-
-        filepath = os.path.join(self.save_dir, selected_filename)
-        wf = wave.open(filepath, 'rb')
-
-        self.playing_stream = self.p.open(format=self.p.get_format_from_width(wf.getsampwidth()),
-                                          channels=wf.getnchannels(),
-                                          rate=wf.getframerate(),
-                                          output=True)
-        # Reset playback state
-        self.frames = []
-        self.current_frame = 0
-        self.is_paused = False
-
-        data = wf.readframes(self.chunk)
-        while data:
-            self.frames.append(data)
-            data = wf.readframes(self.chunk)
-
-        wf.close()
-        self.play_button.config(state=tk.DISABLED)
-        self.pause_button.config(state=tk.NORMAL)
-        # Start playback
-        threading.Thread(target=self.play_frames_from_current).start()
-
-    def load_recordings(self):
+    def load_all_recordings(self):
         self.recordings_listbox.delete(0, tk.END)
         for file in os.listdir(self.save_dir):
             if file.endswith(".wav"):
                 self.recordings_listbox.insert(tk.END, file)
 
-    def toggle_pause(self):
+    def toggle_play_pause(self):
         if self.is_paused:
             self.is_paused = False
-            self.pause_button.config(text="Pause")
+            self.play_pause_button.config(text="Pause")
             # Resume playback in a new thread to avoid blocking the GUI
             threading.Thread(target=self.play_frames_from_current).start()
         else:
             self.is_paused = True
-            self.pause_button.config(text="Resume")
+            self.play_pause_button.config(text="Play")
 
     def play_frames_from_current(self):
         while self.current_frame < len(self.frames) and not self.is_paused:
             data = self.frames[self.current_frame]
             self.playing_stream.write(data)
             self.current_frame += 1
+            print(f'{self.current_frame}/{len(self.frames)}')
         if not self.is_paused:
-            # Playback finished
-            self.cleanup_after_playback()
+            # Finished playing, set to starting point by default
+            self.setup_replay()
 
-    def cleanup_after_playback(self):
-        self.playing_stream.stop_stream()
-        self.playing_stream.close()
+    def setup_replay(self):
         self.current_frame = 0
-        self.frames = []
-        self.play_button.config(state=tk.NORMAL)
-        self.pause_button.config(state=tk.DISABLED, text="Pause")
+        self.is_paused = True
+
+        self.play_pause_button.config(state=tk.NORMAL)
+        self.play_pause_button.config(text="Play")
 
     def _setup_gui(self, master):
         # Set the initial size of the window
@@ -177,11 +152,8 @@ class SoundRecorderApp:
         self.stop_button = tk.Button(self.right_frame, text="Stop", command=self.stop_recording, state=tk.DISABLED)
         self.stop_button.pack(fill='x')
 
-        self.play_button = tk.Button(self.right_frame, text="Play", command=self.play_last_recording, state=tk.DISABLED)
-        self.play_button.pack(fill='x')
-
-        self.pause_button = tk.Button(self.right_frame, text="Pause", command=self.toggle_pause, state=tk.DISABLED)
-        self.pause_button.pack(fill='x')
+        self.play_pause_button = tk.Button(self.right_frame, text="Play", command=self.toggle_play_pause, state=tk.DISABLED)
+        self.play_pause_button.pack(fill='x')
 
         # Bind the selection event to the listbox
         # This allows enabling and disabling "play" button when selecting items in the list
@@ -195,21 +167,101 @@ class SoundRecorderApp:
         # Check if there's a current selection
         if current_selection:
             current_index = int(current_selection[0])
-
-            # If the current selection is the same as the last selection
-            if current_index == self.last_selected_index:
-                # Clear the listbox and disable the corresponding buttons
-                widget.selection_clear(current_index)
-                self.play_button.config(state=tk.DISABLED)
-                self.last_selected_index = -1  # Reset the last selected index
-            else:
+            if current_index != self.last_selected_index:
                 # An audio is selected, enable certain buttons
                 self.last_selected_index = current_index
-                self.play_button.config(state=tk.NORMAL)
-        else:
-            # No current selection
-            self.play_button.config(state=tk.DISABLED)
-            self.last_selected_index = -1  # Reset the last selected index
-    
+
+                # load the audio into playable
+                self.load_selected_audio()
+
+                self.play_pause_button.config(state=tk.NORMAL)
+                self.play_pause_button.config(text="Play")
+                self.record_button.config(state=tk.DISABLED)
+                self.stop_button.config(state=tk.DISABLED)
+
+                return
+
+            else:  # If the current selection is the same as the last selection
+                # Clear the listbox to remove the selection sign
+                widget.selection_clear(current_index)
+
+        self.play_pause_button.config(state=tk.DISABLED)
+        self.play_pause_button.config(text="Play")
+        self.record_button.config(state=tk.NORMAL)
+
+        # remove the loaded audio
+        self.cleanup_selected_audio()
+
+        self.last_selected_index = -1  # Reset the last selected index
+
+    def load_selected_audio(self):
+        # load the audio selected in the listbox into streams and an ndarray
+        if not self.recordings_listbox.curselection():
+            messagebox.showerror("Error", "Please select a recording to play.")
+            return
+
+        selected_index = self.recordings_listbox.curselection()[0]
+        selected_filename = self.recordings_listbox.get(selected_index)
+
+        filepath = os.path.join(self.save_dir, selected_filename)
+
+        # TODO: load the audio into ndarray with our own function
+        waveform, sr = librosa.load(filepath)
+        self.audio_array = waveform
+        self.audio_sampling_rate = sr
+
+        # load the audio into playable stream
+        wf = wave.open(filepath, 'rb')
+        self.playing_stream = self.p.open(
+            format=self.p.get_format_from_width(wf.getsampwidth()),
+            channels=wf.getnchannels(),
+            rate=wf.getframerate(),
+            output=True
+        )
+
+        # Reset playback state
+        self.frames = []
+        self.current_frame = 0
+        self.is_paused = True
+
+        data = wf.readframes(self.chunk_size)
+        while data:
+            self.frames.append(data)
+            data = wf.readframes(self.chunk_size)
+        wf.close()
+
+    def cleanup_selected_audio(self):
+        if self.playing_stream is not None:
+            self.playing_stream.stop_stream()
+            self.playing_stream.close()
+        self.current_frame = 0
+        self.frames = []
+
+        self.audio_sampling_rate = None
+        self.audio_array = None
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
