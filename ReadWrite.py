@@ -41,7 +41,7 @@ def write_wav(data, filepath, rate=44100, channels=2, bytes_per_sample=2):
 # reads wav from filepath, and returns a tuple (frames[], sample_rate, channels, bytes_per_sample)
 # returns 1 and prints error message if failed
 # remember to check the return value!
-def read_wav(filepath):
+def read_wav(filepath, frame_size=4096):
     try:
         file = open(filepath, "rb")
         
@@ -65,14 +65,25 @@ def read_wav(filepath):
         assert chunksize == datasize + 36, "Incorrect chunksize or datasize"
         
         data = []
-        for i in range(datasize//4096):
-            data.append(file.read(4096))
+        for i in range(datasize//frame_size):
+            data.append(file.read(frame_size))
         
         file.close()
         print("Read success")
         print("samplerate is "+str(sample_rate))
+        
+        data = break_into_frames(join_frames(data))
         return (data, sample_rate, channels, bytes_per_sample)
     except Exception as e:
         print("Error during read")
         print(e)
         return 1
+    
+def join_frames(frames):
+    return b''.join(frames)
+
+def break_into_frames(bytedata, frame_size=4096):
+    frames = []
+    for i in range(0, len(bytedata), frame_size):
+        frames.append(bytedata[i:i+frame_size])
+    return frames
