@@ -5,6 +5,7 @@ import pyaudio
 import threading
 import time
 import wave
+import struct
 
 
 class SoundRecorderApp:
@@ -17,6 +18,7 @@ class SoundRecorderApp:
         self.format = pyaudio.paInt16
         self.channels = channels
         self.rate = sampling_rate
+        self.bytes_per_sample = 2
 
         # Recording state
         self.recording = False
@@ -40,11 +42,51 @@ class SoundRecorderApp:
         # Load existing recordings
         self.load_recordings()
 
+    # write current data in frames[] to a file
+    def write_wav(self):
+        filename = f"recording_{int(time.time())}.wav"
+        filepath = os.path.join(self.save_dir, filename)
+        # stop if no frames to write
+        if not self.frames:
+            print("No data to write")
+            return
+        try:
+            file = open(filepath, "wb")
+            
+            datasize = len(self.frames) * len(self.frames[0])   #every frame element seems to have length 4096
+            
+            file.write("RIFF".encode())                     #0-3    RIFF
+            file.write(struct.pack('i', 36+datasize))       #4-7    chunksize = datasize + 36
+            file.write("WAVEfmt ".encode())                 #8-15   WAVEfmt(SPACE)
+            file.write(struct.pack('i', 16))                #16-19  SubchunkSize = 16
+            file.write(struct.pack('h', 1))                 #20-21  AudioFormat = 1
+            file.write(struct.pack('h', self.channels))     #22-23  NumOfChannels
+            file.write(struct.pack('i', self.rate))         #24-27  SampleRate
+            byte_rate = self.rate * self.channels * self.bytes_per_sample
+            file.write(struct.pack('i', byte_rate))         #28-31  ByteRate
+            block_align = self.channels * self.bytes_per_sample
+            file.write(struct.pack('h', block_align))       #32-33  BlockAlign
+            bits_per_sample = self.bytes_per_sample * 8
+            file.write(struct.pack('h', bits_per_sample))   #34-35  BitsPerSample
+            file.write("data".encode())                     #36-39  data
+            file.write(struct.pack('i', datasize))          #40-43  datasize
+            for data in self.frames:
+                file.write(data)           
+            
+            file.close()
+            print("Write success")
+            self.load_recordings()
+        except Exception as e:
+            print("Error during write")
+            print(e)
+            return
+
     def start_recording(self):
         self.recording = True
         self.record_button.config(state=tk.DISABLED)
         self.play_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
+        self.save_button.config(state=tk.DISABLED)
         threading.Thread(target=self._record).start()
 
     def _record(self):
@@ -57,25 +99,15 @@ class SoundRecorderApp:
         )
         print("Recording started")
 
-        frames = []
+        self.frames = []
 
         while self.recording:
             data = stream.read(self.chunk)
-            frames.append(data)
+            self.frames.append(data)
 
         stream.stop_stream()
         stream.close()
 
-        filename = f"recording_{int(time.time())}.wav"
-        filepath = os.path.join(self.save_dir, filename)
-
-        # TODO: Need to implement this part by ourself
-        wf = wave.open(filepath, 'wb')
-        wf.setnchannels(self.channels)
-        wf.setsampwidth(self.p.get_sample_size(self.format))
-        wf.setframerate(self.rate)
-        wf.writeframes(b''.join(frames))
-        wf.close()
 
         print("Recording stopped")
         self.load_recordings()
@@ -84,6 +116,7 @@ class SoundRecorderApp:
         self.recording = False
         self.record_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
+        self.save_button.config(state=tk.NORMAL)
 
     def play_last_recording(self):
         if not self.recordings_listbox.curselection():
@@ -182,6 +215,9 @@ class SoundRecorderApp:
 
         self.pause_button = tk.Button(self.right_frame, text="Pause", command=self.toggle_pause, state=tk.DISABLED)
         self.pause_button.pack(fill='x')
+
+        self.save_button = tk.Button(self.right_frame, text="Save", command=self.write_wav, state=tk.DISABLED)
+        self.save_button.pack(fill='x')
 
         # Bind the selection event to the listbox
         # This allows enabling and disabling "play" button when selecting items in the list
