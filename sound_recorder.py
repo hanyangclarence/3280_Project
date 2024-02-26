@@ -420,7 +420,6 @@ class SoundRecorderApp:
         # DONE: load the audio into ndarray with our own function
         #waveform, sr = librosa.load(filepath, sr=None)
         frames, sr, channels, bps = ReadWrite.read_wav(filepath)
-        frames = ReadWrite.waveform_to_frames(ReadWrite.frames_to_waveform(frames))
         self.audio_sampling_rate = sr
         self.audio_array = ReadWrite.frames_to_waveform(frames)
 
