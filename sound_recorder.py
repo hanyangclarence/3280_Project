@@ -242,8 +242,6 @@ class SoundRecorderApp:
             new_pos += hs
         tobytes = new_arr.tobytes()
         bytes_arr = [tobytes[i:i+4096] for i in range(0, len(tobytes), 4096)]
-        print(len(self.frames))
-        print(len(bytes_arr))
         return bytes_arr
 
 
