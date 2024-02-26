@@ -15,7 +15,6 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import io
 from PIL import Image, ImageTk
 
-import torch
 import tempfile
 import webrtcvad
 import noisereduce as nr
