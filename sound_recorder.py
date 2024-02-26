@@ -212,10 +212,10 @@ class SoundRecorderApp:
         arr = np.frombuffer(b''.join(self.frames), dtype=np.int16)
         new_length = int(len(arr) / speed)
         new_arr = np.zeros(new_length, dtype=np.int16)
-        win_size = self.chunk_size
+        win_size = self.chunk_size * 8
         hs = int(win_size * 0.5)
         ha = int(speed * hs)
-        dmax = self.chunk_size // 8 # dmax cannot be too small, or 0.5x will produce noise.
+        dmax = win_size // 16 # dmax cannot be too large, or 0.5x will produce noise.
         hanning_window = np.hanning(win_size)
         old_pos = 0
         new_pos = 0
@@ -242,8 +242,6 @@ class SoundRecorderApp:
             new_pos += hs
         tobytes = new_arr.tobytes()
         bytes_arr = [tobytes[i:i+4096] for i in range(0, len(tobytes), 4096)]
-        print(len(self.frames))
-        print(len(bytes_arr))
         return bytes_arr
 
 
