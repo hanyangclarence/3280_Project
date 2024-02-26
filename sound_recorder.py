@@ -7,7 +7,7 @@ import numpy as np
 import pyaudio
 import threading
 import time
-import wave
+# import wave
 import librosa
 import soundfile
 import matplotlib.pyplot as plt
@@ -54,6 +54,10 @@ class SoundRecorderApp:
         self.frames = []  # To store frames of the audio file for playback
         self.current_frame = 0  # To keep track of the current frame during playback
         self.is_paused = False  # Playback pause state
+        # for changing speed
+        self.playing_frames = []
+        self.playing_current_frame = 0
+        self.playing_end_frame = None
 
         # Setup all UI Elements
         self._setup_gui(master)
@@ -154,10 +158,20 @@ class SoundRecorderApp:
             self.play_pause_button.config(text="Play")
 
     def play_frames_from_current(self):
-        while not self.is_paused and self.current_frame < self.end_frame:
-            data = self.frames[self.current_frame]
+        speed = self.speed_scale.get()
+        if speed != 1.0:
+            self.playing_frames = self.change_speed(speed)
+            self.playing_current_frame = round(self.current_frame / speed)
+            self.playing_end_frame = len(self.playing_frames)
+        else:
+            self.playing_frames = self.frames
+            self.playing_current_frame = self.current_frame
+            self.playing_end_frame = self.end_frame
+        while not self.is_paused and self.playing_current_frame < self.playing_end_frame:
+            data = self.playing_frames[self.playing_current_frame]
             self.playing_stream.write(data)
-            self.current_frame += 1
+            self.playing_current_frame += 1
+            self.current_frame = round(self.playing_current_frame * speed)
             self.update_progress_bar()
         if not self.is_paused and self.audio_array is not None:
             # Playing reach the end
@@ -193,6 +207,45 @@ class SoundRecorderApp:
             self.plot_style = 0
         else:
             self.plot_style = 1
+
+    def change_speed(self, speed):
+        arr = np.frombuffer(b''.join(self.frames), dtype=np.int16)
+        new_length = int(len(arr) / speed)
+        new_arr = np.zeros(new_length, dtype=np.int16)
+        win_size = self.chunk_size
+        hs = int(win_size * 0.5)
+        ha = int(speed * hs)
+        dmax = self.chunk_size // 8 # dmax cannot be too small, or 0.5x will produce noise.
+        hanning_window = np.hanning(win_size)
+        old_pos = 0
+        new_pos = 0
+        while old_pos < len(arr) - win_size and new_pos < len(new_arr) - win_size:
+            for i in range(win_size):
+                new_arr[new_pos+i] += arr[old_pos+i] * hanning_window[i]
+            # find the position of the most similar frame within (old_pos+ha-dmax,old_pos+ha+dmax).
+            # my attempt to compute cross-correlation without numpy, but failed.
+            # maxval = -2147483648
+            # maxidx = -1
+            # for i in range(max(0,old_pos+ha-dmax),min(len(arr),old_pos+ha+dmax)):
+            #     # metric of simiarity: cross-correlation. Refer to numpy.correlate(a, v, mode='valid')
+            #     correlation = 0
+            #     for j in range(win_size):
+            #         correlation += arr[i+j] * arr[old_pos+hs+j] # may lead to value overflow. idk how to solve
+            #     if correlation > maxval:
+            #         maxval = correlation
+            #         maxidx = i
+            # old_pos = maxidx
+            sp = max(0,old_pos+ha-dmax)
+            ep = min(len(arr),old_pos+ha+dmax+win_size)
+            old_pos = sp + np.argmax(np.correlate(arr[sp:ep],arr[old_pos+hs:old_pos+hs+win_size]))
+            # old_pos += ha
+            new_pos += hs
+        tobytes = new_arr.tobytes()
+        bytes_arr = [tobytes[i:i+4096] for i in range(0, len(tobytes), 4096)]
+        print(len(self.frames))
+        print(len(bytes_arr))
+        return bytes_arr
+
 
     def _setup_gui(self, master):
         # Set the initial size of the window
@@ -254,6 +307,13 @@ class SoundRecorderApp:
 
         self.audio_to_text_button = tk.Button(self.right_frame, text="Convert to Text", command=self.convert_audio_to_text, state=tk.DISABLED)
         self.audio_to_text_button.pack(fill='x')
+
+        self.inner_frame = tk.Frame(self.right_frame)
+        self.inner_frame.pack()
+        self.speed_scale = tk.Scale(self.inner_frame, from_=0.5, to=2, resolution=0.05, orient="horizontal", length=200)
+        self.speed_scale.grid(pady=20)
+
+        self.speed_scale.set(1.0)
 
         # Waveform visualization at the lower frame
         self.audio_visualize_image = None
@@ -419,29 +479,29 @@ class SoundRecorderApp:
 
         # DONE: load the audio into ndarray with our own function
         #waveform, sr = librosa.load(filepath, sr=None)
-        frames, sr, channels, bps = ReadWrite.read_wav(filepath)
+        self.frames, sr, channels, bps = ReadWrite.read_wav(filepath)
         self.audio_sampling_rate = sr
-        self.audio_array = ReadWrite.frames_to_waveform(frames)
+        self.audio_array = ReadWrite.frames_to_waveform(self.frames)
 
         # load the audio into playable stream
-        wf = wave.open(filepath, 'rb')
+        # wf = wave.open(filepath, 'rb')
         self.playing_stream = self.p.open(
-            format=self.p.get_format_from_width(wf.getsampwidth()),
-            channels=wf.getnchannels(),
-            rate=wf.getframerate(),
+            format=self.p.get_format_from_width(bps),
+            channels=channels,
+            rate=sr,
             output=True
         )
-
-        # Reset playback state
-        self.frames = []
-        self.current_frame = 0
-        self.is_paused = True
-
-        data = wf.readframes(self.chunk_size)
-        while data:
-            self.frames.append(data)
-            data = wf.readframes(self.chunk_size)
-        wf.close()
+        #
+        # # Reset playback state
+        # self.frames = []
+        # self.current_frame = 0
+        # self.is_paused = True
+        #
+        # data = wf.readframes(self.chunk_size)
+        # while data:
+        #     self.frames.append(data)
+        #     data = wf.readframes(self.chunk_size)
+        # wf.close()
 
         self.start_frame = 0
         self.end_frame = len(self.frames)
@@ -529,7 +589,7 @@ class SoundRecorderApp:
         self.visualization_frame.configure(image=self.photo_image)
 
     def update_progress_bar(self):
-        current_pos = int(self.current_frame / len(self.frames) * 1000) if len(self.frames) > 0 else 0
+        current_pos = int(self.playing_current_frame / len(self.playing_frames) * 1000) if len(self.playing_frames) > 0 else 0
         self.progress_bar['value'] = current_pos
 
     def on_left_mouse_click_progressbar(self, event):
