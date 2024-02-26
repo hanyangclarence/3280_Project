@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import io
 from PIL import Image, ImageTk
+import ReadWrite
 
 
 class SoundRecorderApp:
@@ -89,13 +90,14 @@ class SoundRecorderApp:
         filename = f"recording_{int(time.time())}.wav"
         filepath = os.path.join(self.save_dir, filename)
 
-        # TODO: Need to implement this part by ourself
-        wf = wave.open(filepath, 'wb')
+        # DONE: Need to implement this part by ourself
+        '''wf = wave.open(filepath, 'wb')
         wf.setnchannels(self.channels)
         wf.setsampwidth(self.p.get_sample_size(self.format))
         wf.setframerate(self.rate)
         wf.writeframes(b''.join(frames))
-        wf.close()
+        wf.close()'''
+        ReadWrite.write_wav(frames, filepath, self.rate, self.channels, self.p.get_sample_size(self.format))
 
         print("Recording stopped")
         self.load_all_recordings()
@@ -276,10 +278,12 @@ class SoundRecorderApp:
         self.selected_filename = selected_filename
         filepath = os.path.join(self.save_dir, selected_filename)
 
-        # TODO: load the audio into ndarray with our own function
-        waveform, sr = librosa.load(filepath)
-        self.audio_array = waveform
+        # DONE: load the audio into ndarray with our own function
+        #waveform, sr = librosa.load(filepath, sr=None)
+        frames, sr, channels, bps = ReadWrite.read_wav(filepath)
+        frames = ReadWrite.waveform_to_frames(ReadWrite.frames_to_waveform(frames))
         self.audio_sampling_rate = sr
+        self.audio_array = ReadWrite.frames_to_waveform(frames)
 
         # load the audio into playable stream
         wf = wave.open(filepath, 'rb')

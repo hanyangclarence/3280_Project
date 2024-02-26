@@ -70,20 +70,39 @@ def read_wav(filepath, frame_size=4096):
         
         file.close()
         print("Read success")
-        print("samplerate is "+str(sample_rate))
         
-        data = break_into_frames(join_frames(data))
-        return (data, sample_rate, channels, bytes_per_sample)
+        return data, sample_rate, channels, bytes_per_sample
     except Exception as e:
         print("Error during read")
         print(e)
         return 1
     
-def join_frames(frames):
-    return b''.join(frames)
+def frames_to_waveform(frames, bytes_per_sample=2, channels=2):
+    waveform = []
+    assert channels==2, "Only support 2 channels now"
+    print(len(frames))
+    for frame in frames:
+        for i in range(0, len(frame), channels*bytes_per_sample):
+            num1 = struct.unpack('<h', frame[i:i+bytes_per_sample])[0]
+            num2 = struct.unpack('<h', frame[i+bytes_per_sample:i+2*bytes_per_sample])[0]
+            waveform.append((num1+num2)/32768.0/2.0)    #resize to [-1, 1], average 2 channels
+    return waveform
 
-def break_into_frames(bytedata, frame_size=4096):
+def waveform_to_frames(waveform, frame_size=4096, bytes_per_sample=2, channels=2):
+    assert channels==2, "Only support 2 channels now"
+    assert bytes_per_sample==2, "Only support 2 byte samples now"
     frames = []
-    for i in range(0, len(bytedata), frame_size):
-        frames.append(bytedata[i:i+frame_size])
+    
+    current_size = 0
+    frame = b''
+    for float in waveform:
+        b = struct.pack('h', round(float*32768))
+        frame += b #connect bytes
+        current_size += 1
+        
+        if current_size == 4096:    #finished 1 frame
+            current_size = 0
+            frames.append(frame)
+            frame = b''
+            
     return frames
