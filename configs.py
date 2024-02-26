@@ -3,6 +3,6 @@ configs = {
 
     # about audio recording
     'chunk_size': 1024,
-    'channels': 2,
+    'channels': 1,
     'sampling_rate': 44100,
 }
