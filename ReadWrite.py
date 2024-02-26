@@ -1,4 +1,5 @@
 import struct
+import numpy
 
 # write the contents of data to filepath
 # returns 0 on success, return 1 and print error message if failed
@@ -86,6 +87,8 @@ def frames_to_waveform(frames, bytes_per_sample=2, channels=2):
             num1 = struct.unpack('<h', frame[i:i+bytes_per_sample])[0]
             num2 = struct.unpack('<h', frame[i+bytes_per_sample:i+2*bytes_per_sample])[0]
             waveform.append((num1+num2)/32768.0/2.0)    #resize to [-1, 1], average 2 channels
+            
+    waveform = numpy.array(waveform)
     return waveform
 
 def waveform_to_frames(waveform, frame_size=4096, bytes_per_sample=2, channels=2):
