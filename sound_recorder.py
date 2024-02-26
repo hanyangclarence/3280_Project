@@ -658,8 +658,10 @@ class SoundRecorderApp:
 
         wav_start_idx = int(self.start_frame / len(self.frames) * self.audio_array.shape[0])
         wav_end_idx = int(self.end_frame / len(self.frames) * self.audio_array.shape[0])
-        # TODO: replace this with our own function
-        soundfile.write(save_path, self.audio_array[wav_start_idx:wav_end_idx], samplerate=self.audio_sampling_rate)
+        # DONE: replace this with our own function
+        #soundfile.write(save_path, self.audio_array[wav_start_idx:wav_end_idx], samplerate=self.audio_sampling_rate)
+        waveform = ReadWrite.waveform_to_frames(self.audio_array[wav_start_idx:wav_end_idx], sample_rate=self.audio_sampling_rate)
+        ReadWrite.write_wav(waveform, save_path, self.audio_sampling_rate)
 
         # Update the listbox
         self.load_all_recordings()
