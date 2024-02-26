@@ -91,7 +91,7 @@ def frames_to_waveform(frames, bytes_per_sample=2, channels=2):
     waveform = numpy.array(waveform)
     return waveform
 
-def waveform_to_frames(waveform, frame_size=4096, bytes_per_sample=2, channels=2):
+def waveform_to_frames(waveform, frame_size=4096, bytes_per_sample=2, channels=2, sample_rate=44100):
     assert channels==2, "Only support 2 channels now"
     assert bytes_per_sample==2, "Only support 2 byte samples now"
     frames = []
@@ -101,6 +101,7 @@ def waveform_to_frames(waveform, frame_size=4096, bytes_per_sample=2, channels=2
     for float in waveform:
         b = struct.pack('h', round(float*32768))
         frame += b #connect bytes
+        frame += b #2 channels
         current_size += 1
         
         if current_size == 4096:    #finished 1 frame
