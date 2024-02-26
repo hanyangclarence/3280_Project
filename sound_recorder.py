@@ -20,11 +20,11 @@ import tempfile
 import webrtcvad
 import noisereduce as nr
 import soundfile as sf
-import progressbar
+# import progressbar
 
 import speech_recognition as sr
-from pydub import AudioSegment
-from pydub.silence import split_on_silence
+# from pydub import AudioSegment
+# from pydub.silence import split_on_silence
 from datetime import datetime
 
 
@@ -69,14 +69,20 @@ class SoundRecorderApp:
         # Load existing recordings
         self.load_all_recordings()
 
+        self.recording_thread = None
+        self.playing_thread = None
+
     def start_recording(self):
         self.recording = True
         self.record_button.config(state=tk.DISABLED)
         self.play_pause_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
         self.visualization_frame.pack_forget()
+        self.change_plot_style_button.pack(anchor='ne')
         self.canvas_widget.get_tk_widget().pack()
-        threading.Thread(target=self._record).start()
+        self.recording_thread = threading.Thread(target=self._record)
+        self.recording_thread.daemon = True
+        self.recording_thread.start()
 
     def _record(self):
         stream = self.p.open(
@@ -95,6 +101,7 @@ class SoundRecorderApp:
             data = stream.read(self.chunk_size)
             frames.append(data)
             if count % 5 ==0:
+                count=0
                 self.realtime_plot_waveform(frames)
         stream.stop_stream()
         stream.close()
@@ -122,6 +129,7 @@ class SoundRecorderApp:
         self.ax.axhline(y=0, color='black', alpha=0)
         self.canvas_widget.draw()
         self.canvas_widget.get_tk_widget().pack_forget()
+        self.change_plot_style_button.pack_forget()
         self.visualization_frame.pack(fill='both', expand=True)
 
     def load_all_recordings(self):
@@ -137,7 +145,9 @@ class SoundRecorderApp:
             self.is_paused = False
             self.play_pause_button.config(text="Pause")
             # Resume playback in a new thread to avoid blocking the GUI
-            threading.Thread(target=self.play_frames_from_current).start()
+            self.playing_thread=threading.Thread(target=self.play_frames_from_current)
+            self.playing_thread.daemon=True
+            self.playing_thread.start()
         else:
             self.is_paused = True
             self.play_pause_button.config(text="Play")
@@ -169,9 +179,19 @@ class SoundRecorderApp:
         self.ax.clear()
         self.ax.axis('off')
         self.ax.set_ylim(-5000, 5000)
-        self.ax.plot(int_frames, color='gray')
+        if self.plot_style == 1:
+            self.ax.plot(int_frames, color='gray')
+        # self.ax.axhline(y=0, color='blue',xmin=0.05,xmax=0.95)
         # self.ax.vlines(range(len(int_frames)), 0, int_frames, color='blue', alpha=1,linewidths=1)
+        else:
+            self.ax.vlines(range(len(int_frames)), -abs(int_frames)/2, abs(int_frames)/2, color='gray', alpha=1, linewidths=1)
         self.canvas_widget.draw()
+
+    def change_plot_style(self):
+        if self.plot_style == 1:
+            self.plot_style = 0
+        else:
+            self.plot_style = 1
 
     def _setup_gui(self, master):
         # Set the initial size of the window
@@ -202,12 +222,17 @@ class SoundRecorderApp:
         self.last_selected_index = -1
         self.recordings_listbox.bind('<<ListboxSelect>>', self.on_listbox_select)
 
+        # real-time visualization
         self.ax = None
         self.fig, self.ax = plt.subplots()
         self.ax.axis('off')
         self.fig.patch.set_facecolor('gray')
         self.fig.patch.set_alpha(0.12)
         self.canvas_widget = FigureCanvasTkAgg(self.fig, master=self.lower_frame)
+
+        # button to change the style of real-time visualization
+        self.plot_style = 1
+        self.change_plot_style_button = tk.Button(self.lower_frame, text="Change Style", command=self.change_plot_style)
 
         # Buttons in the right frame
         self.record_button = tk.Button(self.right_frame, text="Record", command=self.start_recording)
@@ -249,7 +274,7 @@ class SoundRecorderApp:
         # 生成一个带时间戳的文件名
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
         filename = f"outputText_{timestamp}.txt"
-        
+
         # 确保 save_dir 是目录路径
         if os.path.isdir(self.save_dir):
             file_path = os.path.join(self.save_dir, filename)
@@ -267,14 +292,11 @@ class SoundRecorderApp:
         # text = obj.get_text()
         # obj.write_to_text_file(text)
 
-        # 将你的音频数组和采样率转换为AudioData对象
         audio_data_int = np.int16(self.audio_array * 32767)
         audio_data = sr.AudioData(audio_data_int.tobytes(), self.rate, 2)
 
-        # 现在你可以使用speech_recognition库的识别器来识别这个AudioData对象
         recognizer = sr.Recognizer()
         try:
-            # 这里使用sphinx的识别服务作为示例
             text = recognizer.recognize_sphinx(audio_data, language='en-US')
             self.write_to_text_file(text)
             print("识别结果：", text)
@@ -338,7 +360,7 @@ class SoundRecorderApp:
         # 更新录音列表以显示新文件
         self.load_all_recordings()
         print(f"Noise-reduced audio saved as {output_filename}.")
-        
+
     def on_listbox_select(self, event):
         widget = event.widget
         current_selection = widget.curselection()
