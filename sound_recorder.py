@@ -375,7 +375,7 @@ class SoundRecorderApp:
         if self.audio_sampling_rate not in supported_rates:
             print(f"Original sample rate ({self.audio_sampling_rate} Hz) is not supported by WebRTC VAD. Resampling...")
             # Choose a supported sample rate for resampling. Here we choose 16000 Hz as a default.
-            target_rate = 16000
+            target_rate = 8000
             # Resample the audio to the target rate
             self.audio_array = librosa.resample(self.audio_array, orig_sr=self.audio_sampling_rate, target_sr=target_rate)
             self.audio_sampling_rate = target_rate
@@ -669,8 +669,8 @@ class SoundRecorderApp:
         wav_end_idx = int(self.end_frame / len(self.frames) * self.audio_array.shape[0])
         # DONE: replace this with our own function
         #soundfile.write(save_path, self.audio_array[wav_start_idx:wav_end_idx], samplerate=self.audio_sampling_rate)
-        waveform = ReadWrite.waveform_to_frames(self.audio_array[wav_start_idx:wav_end_idx], sample_rate=self.audio_sampling_rate)
-        ReadWrite.write_wav(waveform, save_path, self.audio_sampling_rate)
+        waveform = ReadWrite.waveform_to_frames(self.audio_array[wav_start_idx:wav_end_idx], sample_rate=22050)
+        ReadWrite.write_wav(waveform, save_path, rate=22050)
 
         # Update the listbox
         self.load_all_recordings()
