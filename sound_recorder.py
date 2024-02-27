@@ -432,7 +432,7 @@ class SoundRecorderApp:
 
         # 创建第一个滑动模块用于调整音调
         self.inner_frame_1 = tk.Frame(self.right_frame)
-        self.inner_frame_1.pack()
+        self.inner_frame_1.pack(pady=20)
 
         # 添加一个标题标签来描述调整音调的滑动模块
         title_label_1 = tk.Label(self.inner_frame_1, text="Adjust Pitch", font=("Arial", 12, "bold"))
@@ -440,12 +440,12 @@ class SoundRecorderApp:
 
         # 创建一个滑动条来选择音调调整的步长
         self.n_steps = tk.Scale(self.inner_frame_1, from_=-16, to=16, resolution=1, orient="horizontal", length=200)
-        self.n_steps.pack(pady=20)
+        self.n_steps.pack()
         self.n_steps.set(0.0)
 
         # 创建第二个滑动模块用于调整速度
         self.inner_frame_2 = tk.Frame(self.right_frame)
-        self.inner_frame_2.pack()
+        self.inner_frame_2.pack(pady=20)
 
         # 添加一个标题标签来描述调整速度的滑动模块
         title_label_2 = tk.Label(self.inner_frame_2, text="Adjust Speed", font=("Arial", 12, "bold"))
@@ -453,7 +453,7 @@ class SoundRecorderApp:
 
         # 创建一个滑动条来选择速度调整的比例
         self.speed_scale = tk.Scale(self.inner_frame_2, from_=0.5, to=2, resolution=0.05, orient="horizontal", length=200)
-        self.speed_scale.pack(pady=20)
+        self.speed_scale.pack()
         self.speed_scale.set(1.0)
 
         # Waveform visualization at the lower frame
