@@ -207,12 +207,15 @@ class SoundRecorderApp:
         print(n_steps)
         speed = self.speed_scale.get()
         print(speed)
+        
+        trimmed_frames = self.frames[self.start_frame:self.end_frame]
+
         if speed != 1.0:
-            self.playing_frames = self.change_speed(speed)
+            self.playing_frames = self.change_speed(speed, trimmed_frames)
             self.playing_current_frame = round(self.current_frame / speed)
             self.playing_end_frame = len(self.playing_frames)
         else:
-            self.playing_frames = self.frames
+            self.playing_frames = trimmed_frames
             self.playing_current_frame = self.current_frame
             self.playing_end_frame = self.end_frame
 
@@ -228,10 +231,10 @@ class SoundRecorderApp:
             self.playing_current_frame = 0  # Start playing from the beginning of the audio
             self.playing_end_frame = len(self.playing_frames)
 
-        # else:
-        #     self.playing_frames = self.frames
-        #     self.playing_current_frame = self.current_frame
-        #     self.playing_end_frame = self.end_frame
+        else:
+            self.playing_frames = self.frames
+            self.playing_current_frame = self.current_frame
+            self.playing_end_frame = self.end_frame
 
         # while not self.is_paused and self.playing_current_frame < self.playing_end_frame:
         #     data = self.playing_frames[self.playing_current_frame]
@@ -297,8 +300,8 @@ class SoundRecorderApp:
         return y_shifted
 
 
-    def change_speed(self, speed):
-        arr = np.frombuffer(b''.join(self.frames), dtype=np.int16)
+    def change_speed(self, speed, trimmed_frames):
+        arr = np.frombuffer(b''.join(trimmed_frames), dtype=np.int16)
         new_length = int(len(arr) / speed)
         new_arr = np.zeros(new_length, dtype=np.int16)
         win_size = self.chunk_size * 8
