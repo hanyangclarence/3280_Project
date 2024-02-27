@@ -5,7 +5,7 @@ import numpy
 # returns 0 on success, return 1 and print error message if failed
 # data is frames[]
 def write_wav(data, filepath, rate=44100, channels=2, bytes_per_sample=2):
-    if not data:
+    if len(data)==0:
         print("No data to write")
         return
     try:
@@ -80,13 +80,19 @@ def read_wav(filepath, frame_size=4096):
     
 def frames_to_waveform(frames, bytes_per_sample=2, channels=2):
     waveform = []
-    assert channels==2, "Only support 2 channels now"
-    print(len(frames))
-    for frame in frames:
-        for i in range(0, len(frame), channels*bytes_per_sample):
-            num1 = struct.unpack('<h', frame[i:i+bytes_per_sample])[0]
-            num2 = struct.unpack('<h', frame[i+bytes_per_sample:i+2*bytes_per_sample])[0]
-            waveform.append((num1+num2)/32768.0/2.0)    #resize to [-1, 1], average 2 channels
+    if channels==2:
+        for frame in frames:
+            for i in range(0, len(frame), channels*bytes_per_sample):
+                num1 = struct.unpack('<h', frame[i:i+bytes_per_sample])[0]
+                num2 = struct.unpack('<h', frame[i+bytes_per_sample:i+2*bytes_per_sample])[0]
+                waveform.append((num1+num2)/32768.0/2.0)    #resize to [-1, 1], average 2 channels
+    elif channels==1:
+        for frame in frames:
+            for i in range(0, len(frame), channels*bytes_per_sample):
+                num1 = struct.unpack('<h', frame[i:i+bytes_per_sample])[0]
+                waveform.append(num1/32768.0)
+    else:
+        raise("channels error")
             
     waveform = numpy.array(waveform)
     return waveform
@@ -96,17 +102,31 @@ def waveform_to_frames(waveform, frame_size=4096, bytes_per_sample=2, channels=2
     assert bytes_per_sample==2, "Only support 2 byte samples now"
     frames = []
     
-    current_size = 0
-    frame = b''
-    for float in waveform:
-        b = struct.pack('h', round(float*32768))
-        frame += b #connect bytes
-        frame += b #2 channels
-        current_size += 1
+    if channels==2:
+        current_size = 0
+        frame = b''
+        for float in waveform:
+            b = struct.pack('h', round(float*32768))
+            frame += b #connect bytes
+            frame += b #2 channels
+            current_size += 1
+            
+            if current_size == frame_size:    #finished 1 frame
+                current_size = 0
+                frames.append(frame)
+                frame = b''
+    elif channels==1:
+        current_size = 0
+        frame = b''
+        for float in waveform:
+            b = struct.pack('h', round(float*32768))
+            frame += b #connect bytes
+            current_size += 1
+            
+            if current_size == frame_size:    #finished 1 frame
+                current_size = 0
+                frames.append(frame)
+                frame = b''
         
-        if current_size == 4096:    #finished 1 frame
-            current_size = 0
-            frames.append(frame)
-            frame = b''
             
     return frames
