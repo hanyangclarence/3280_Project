@@ -250,8 +250,12 @@ class SoundRecorderApp:
     #         return frames  # Return original frames if an error occurs
 
     def change_pitch(self, frames, n_steps):
+        # our speed changing method
+        # frames = self.change_speed(1/(2 ** (1.0 * n_steps / 12.0)),frames)
         arr = np.frombuffer(b''.join(frames), dtype=np.int16)
         y = arr.astype(np.float32)
+        # librosa's speed changing method
+        y = librosa.effects.time_stretch(y,rate=1/(2 ** (1.0 * n_steps / 12.0)))
         sr = self.audio_sampling_rate
         original_length = len(y)
         try:
@@ -263,7 +267,6 @@ class SoundRecorderApp:
 
             # Splitting the shifted audio into frames
             bytes_arr = [y_shifted_int[i:i + self.chunk_size].tobytes() for i in range(0, len(y_shifted_int), self.chunk_size)]
-            # bytes_arr = self.change_speed(len(y_shifted_int)/original_length,bytes_arr)
             return bytes_arr
         except Exception as e:
             print(f"Error occurred during pitch shifting: {str(e)}")
