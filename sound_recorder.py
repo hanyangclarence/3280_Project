@@ -10,6 +10,8 @@ import io
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from PIL import Image, ImageTk
+import ReadWrite
+import math
 
 import librosa
 import webrtcvad
@@ -51,6 +53,7 @@ class SoundRecorderApp:
         self.playing_frames = []
         self.playing_current_frame = 0
         self.playing_end_frame = None
+        self.speed_changing_mode = "ola"
 
         # Setup all UI Elements
         self._setup_gui(master)
@@ -99,7 +102,7 @@ class SoundRecorderApp:
             frames.append(data)
             if count % 5 ==0:
                 count=0
-                self.realtime_plot_waveform(frames)
+                self.realtime_visualization(frames)
         stream.stop_stream()
         stream.close()
 
@@ -180,37 +183,15 @@ class SoundRecorderApp:
 
         self.update_progress_bar()
 
-    def realtime_plot_waveform(self,frames):
-        leng = 500
-        int_frames = np.zeros((leng, ), dtype=np.int16)
-        for i in range(min(leng,len(frames))):
-            int_frames[leng-i-1] = np.frombuffer(frames[len(frames)-i-1], dtype=np.int16)[0]
-        self.ax.clear()
-        self.ax.axis('off')
-        self.ax.set_ylim(-5000, 5000)
-        if self.plot_style == 1:
-            self.ax.plot(int_frames, color='gray')
-        # self.ax.axhline(y=0, color='blue',xmin=0.05,xmax=0.95)
-        # self.ax.vlines(range(len(int_frames)), 0, int_frames, color='blue', alpha=1,linewidths=1)
-        else:
-            self.ax.vlines(range(len(int_frames)), -abs(int_frames)/2, abs(int_frames)/2, color='gray', alpha=1, linewidths=1)
-        self.canvas_widget.draw()
-
-    def change_plot_style(self):
-        if self.plot_style == 1:
-            self.plot_style = 0
-        else:
-            self.plot_style = 1
-
     def play_frames_from_current(self):
         n_steps = self.n_steps.get()
         print(n_steps)
         speed = self.speed_scale.get()
         print(speed)
         if speed != 1.0:
-            self.playing_frames = self.change_speed(speed)
+            self.playing_frames = self.change_speed(speed,self.frames)
             self.playing_current_frame = round(self.current_frame / speed)
-            self.playing_end_frame = len(self.playing_frames)
+            self.playing_end_frame = round(self.end_frame / speed)
         else:
             self.playing_frames = self.frames
             self.playing_current_frame = self.current_frame
@@ -224,9 +205,10 @@ class SoundRecorderApp:
         #     self.update_progress_bar()
 
         if n_steps != 0:
+            original_length = len(self.playing_frames)
             self.playing_frames = self.change_pitch(self.playing_frames, n_steps)
-            self.playing_current_frame = 0  # Start playing from the beginning of the audio
-            self.playing_end_frame = len(self.playing_frames)
+            self.playing_current_frame = round(self.playing_current_frame *len(self.playing_frames)/original_length)
+            self.playing_end_frame = round(self.playing_end_frame *len(self.playing_frames)/original_length)
 
         # else:
         #     self.playing_frames = self.frames
@@ -273,6 +255,7 @@ class SoundRecorderApp:
         arr = np.frombuffer(b''.join(frames), dtype=np.int16)
         y = arr.astype(np.float32)
         sr = self.audio_sampling_rate
+        original_length = len(y)
 
         try:
             # Perform pitch shifting using FFT
@@ -283,6 +266,7 @@ class SoundRecorderApp:
 
             # Splitting the shifted audio into frames
             bytes_arr = [y_shifted_int[i:i + self.chunk_size].tobytes() for i in range(0, len(y_shifted_int), self.chunk_size)]
+            # bytes_arr = self.change_speed(len(y_shifted_int)/original_length,bytes_arr)
             return bytes_arr
         except Exception as e:
             print(f"Error occurred during pitch shifting: {str(e)}")
@@ -297,41 +281,93 @@ class SoundRecorderApp:
         return y_shifted
 
 
-    def change_speed(self, speed):
-        arr = np.frombuffer(b''.join(self.frames), dtype=np.int16)
+    def realtime_visualization(self, frames):
+        leng = 512
+        self.ax.clear()
+        self.ax.axis('off')
+        self.ax.set_ylim(-5000, 5000)
+        int_frames = np.zeros((leng,), dtype=np.int16)
+        if self.plot_style == 3:
+            for i in range(min(leng, len(frames[-1]))):
+                int_frames[leng - i - 1] = np.frombuffer(frames[-1], dtype=np.int16)[-i * 2]
+            self.ax.plot(int_frames, color='gray')
+        elif self.plot_style == 4:
+            leng = self.chunk_size
+            int_frames = np.zeros((leng,), dtype=np.int16)
+            for i in range(leng):
+                int_frames[leng - i - 1] = np.frombuffer(frames[-1], dtype=np.int16)[-i]
+            self.ax.axis('on')
+            self.ax.set_ylim(0, 1500)
+            # generate the hanning window
+            hanning_window = [0] * leng
+            for i in range(leng):
+                hanning_window[i] = 0.5 - 0.5 * math.cos(2 * math.pi * i / (leng - 1))
+            float_frames = int_frames.astype(np.float64)
+            float_frames *= hanning_window
+            spectrum = np.fft.fft(float_frames)
+            magnitude_spectrum = np.abs(spectrum) / (leng/2)
+            frequency_axis = np.linspace(0, self.rate / 8, leng // 8)
+            self.ax.plot(frequency_axis, magnitude_spectrum[:leng // 8])
+        else:
+            for i in range(min(leng,len(frames))):
+                int_frames[leng-i-1] = np.frombuffer(frames[len(frames)-i-1], dtype=np.int16)[0]
+            if self.plot_style == 1:
+                self.ax.plot(int_frames, color='gray')
+            # self.ax.axhline(y=0, color='blue',xmin=0.05,xmax=0.95)
+            else:
+                self.ax.vlines(range(len(int_frames)), -abs(int_frames)/2, abs(int_frames)/2, alpha=1, linewidths=1)
+                # self.ax.vlines(range(len(int_frames)), 0, int_frames, color='gray', alpha=1,linewidths=1)
+        self.canvas_widget.draw()
+    def change_plot_style(self):
+        if self.plot_style == 4:
+            self.plot_style = 1
+        else:
+            self.plot_style += 1
+    def change_speed(self, speed,frames):
+        arr = np.frombuffer(b''.join(frames), dtype=np.int16)
         new_length = int(len(arr) / speed)
-        new_arr = np.zeros(new_length, dtype=np.int16)
+        new_arr = np.zeros(new_length, dtype=np.float64)
         win_size = self.chunk_size * 8
         hs = int(win_size * 0.5)
         ha = int(speed * hs)
-        dmax = win_size // 16 # dmax cannot be too large, or 0.5x will produce noise.
-        hanning_window = np.hanning(win_size)
+        dmax = win_size // 8 # dmax cannot be too large, or 0.5x will produce noise.
+        # generate the hanning window
+        hanning_window = [0] * win_size
+        for i in range(win_size):
+            hanning_window[i] = 0.5 - 0.5 * math.cos(2 * math.pi * i /(win_size - 1))
         old_pos = 0
         new_pos = 0
         while old_pos < len(arr) - win_size and new_pos < len(new_arr) - win_size:
             for i in range(win_size):
                 new_arr[new_pos+i] += arr[old_pos+i] * hanning_window[i]
-            # find the position of the most similar frame within (old_pos+ha-dmax,old_pos+ha+dmax).
-            # my attempt to compute cross-correlation without numpy, but failed.
-            # maxval = -2147483648
-            # maxidx = -1
-            # for i in range(max(0,old_pos+ha-dmax),min(len(arr),old_pos+ha+dmax)):
-            #     # metric of simiarity: cross-correlation. Refer to numpy.correlate(a, v, mode='valid')
-            #     correlation = 0
-            #     for j in range(win_size):
-            #         correlation += arr[i+j] * arr[old_pos+hs+j] # may lead to value overflow. idk how to solve
-            #     if correlation > maxval:
-            #         maxval = correlation
-            #         maxidx = i
-            # old_pos = maxidx
-            sp = max(0,old_pos+ha-dmax)
-            ep = min(len(arr),old_pos+ha+dmax+win_size)
-            old_pos = sp + np.argmax(np.correlate(arr[sp:ep],arr[old_pos+hs:old_pos+hs+win_size]))
-            # old_pos += ha
+            # update old_pos, there are 2 ways
+            if self.speed_changing_mode == "ola":
+                # basic part: straight-forward OLA
+                old_pos += ha
+            else:
+                # enhanced part: WSOLA, find the position of the most similar frame within (old_pos+ha-dmax,old_pos+ha+dmax).
+                sp = max(0, old_pos + ha - dmax)
+                ep = min(len(arr), old_pos + ha + dmax + win_size)
+                # metric of similarity: cross-correlation
+                correlations = np.correlate(arr[sp:ep], arr[old_pos + hs:old_pos + hs + win_size])
+                max_idx, max_value = 0, correlations[0]
+                for i, value in enumerate(correlations):
+                    if value > max_value:
+                        max_idx, max_value = i, value
+                old_pos = sp + max_idx
+            # update new_pos
             new_pos += hs
+        new_arr = new_arr.astype(np.int16)
         tobytes = new_arr.tobytes()
         bytes_arr = [tobytes[i:i+4096] for i in range(0, len(tobytes), 4096)]
         return bytes_arr
+    def speed_mode(self):
+        if self.speed_changing_mode == "ola":
+            self.speed_changing_mode = "wsola"
+            self.speed_changing_mode_button.config(text="WSOLA")
+        else:
+            self.speed_changing_mode = "ola"
+            self.speed_changing_mode_button.config(text="OLA")
 
     # def adjust_pitch(self):
     #     n_steps = self.n_steps.get()
@@ -375,7 +411,7 @@ class SoundRecorderApp:
         self.upper_frame.pack(side="top", fill="both", expand=True)
         self.upper_frame.pack_propagate(False)  # Prevent the frame from resizing to fit its contents
 
-        self.lower_frame = tk.Frame(master, height=350, width=1000)
+        self.lower_frame = tk.Frame(master, height=400, width=1000)
         self.lower_frame.pack(side="bottom", fill="both", expand=True)
         self.lower_frame.pack_propagate(False)  # Prevent the frame from resizing to fit its contents
 
@@ -396,8 +432,7 @@ class SoundRecorderApp:
         self.recordings_listbox.bind('<<ListboxSelect>>', self.on_listbox_select)
 
         # real-time visualization
-        self.ax = None
-        self.fig, self.ax = plt.subplots()
+        self.fig, self.ax = plt.subplots(figsize=(10,6))
         self.ax.axis('off')
         self.fig.patch.set_facecolor('gray')
         self.fig.patch.set_alpha(0.12)
@@ -430,31 +465,35 @@ class SoundRecorderApp:
         # self.adjust_pitch_button = tk.Button(self.right_frame, text="Adjust Pitch", command=self.adjust_pitch, state=tk.DISABLED)
         # self.adjust_pitch_button.pack(fill='x')
 
-        # 创建第一个滑动模块用于调整音调
+        # frame for pitch adjusting scale
         self.inner_frame_1 = tk.Frame(self.right_frame)
         self.inner_frame_1.pack(pady=20)
 
-        # 添加一个标题标签来描述调整音调的滑动模块
+
         title_label_1 = tk.Label(self.inner_frame_1, text="Adjust Pitch", font=("Arial", 12, "bold"))
         title_label_1.pack()
 
-        # 创建一个滑动条来选择音调调整的步长
+        # scale of pitch adjusting
         self.n_steps = tk.Scale(self.inner_frame_1, from_=-16, to=16, resolution=1, orient="horizontal", length=200)
         self.n_steps.pack()
         self.n_steps.set(0.0)
 
-        # 创建第二个滑动模块用于调整速度
+        # frame for speed changing scale
         self.inner_frame_2 = tk.Frame(self.right_frame)
         self.inner_frame_2.pack(pady=20)
 
-        # 添加一个标题标签来描述调整速度的滑动模块
+
         title_label_2 = tk.Label(self.inner_frame_2, text="Adjust Speed", font=("Arial", 12, "bold"))
         title_label_2.pack()
 
-        # 创建一个滑动条来选择速度调整的比例
+        # scale of speed changing
         self.speed_scale = tk.Scale(self.inner_frame_2, from_=0.5, to=2, resolution=0.05, orient="horizontal", length=200)
         self.speed_scale.pack()
         self.speed_scale.set(1.0)
+        label_mode = tk.Label(self.inner_frame_2,text="Mode ")
+        label_mode.pack(anchor="se")
+        self.speed_changing_mode_button = tk.Button(self.inner_frame_2,text="OLA",width=6,command=self.speed_mode)
+        self.speed_changing_mode_button.pack(anchor="se")
 
         # Waveform visualization at the lower frame
         self.audio_visualize_image = None
@@ -565,7 +604,7 @@ class SoundRecorderApp:
             ReadWrite.write_wav(reduced_noise_audio, output_filename, self.audio_sampling_rate, 1, 2)
 
             self.load_all_recordings()
-            print(f"Noise-reduced audio saved as {output_filepath}.")
+            print(f"Noise-reduced audio saved as {output_filename}.")
         except ValueError as e:
             print("Caught ValueError while trying to plot waveform:", e)
 
