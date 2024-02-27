@@ -262,9 +262,6 @@ class SoundRecorderApp:
             f.write(text)
 
     def convert_audio_to_text(self):
-        # obj = AudioToText(self.audio_array, self.save_dir, self.language)
-        # text = obj.get_text()
-        # obj.write_to_text_file(text)
 
         # 将你的音频数组和采样率转换为AudioData对象
         audio_data_int = np.int16(self.audio_array * 32767)
@@ -283,11 +280,12 @@ class SoundRecorderApp:
             print(f"从服务请求结果时出错：{e}")
 
     def remove_background_noise(self):
+
         if self.audio_array is None or self.audio_sampling_rate is None:
             print("No audio loaded for noise reduction.")
             return
 
-        # Check if sample rate is supported by WebRTC VAD
+        # Check if the original sample rate is supported by WebRTC VAD. If not, resample the audio.
         supported_rates = [8000, 16000, 32000, 48000]
         if self.audio_sampling_rate not in supported_rates:
             print(f"Original sample rate ({self.audio_sampling_rate} Hz) is not supported by WebRTC VAD. Resampling...")
@@ -298,7 +296,6 @@ class SoundRecorderApp:
             self.audio_sampling_rate = target_rate
             print(f"Audio has been resampled to {target_rate} Hz.")
 
-        # Proceed with VAD and noise reduction as before
         # Convert audio from float to int16, ensuring compatibility with WebRTC VAD
         audio_data_int16 = (self.audio_array * 32768).astype(np.int16)
 
@@ -324,19 +321,28 @@ class SoundRecorderApp:
         reduced_noise_audio = nr.reduce_noise(y=filtered_audio_data, sr=self.audio_sampling_rate)
 
         self.audio_array = reduced_noise_audio
+        try:
+            self.plot_waveform()
+            self.update_visualize_image()
+            self.update_progress_bar()
 
-        # Update GUI components as necessary
-        self.plot_waveform()
-        self.update_visualize_image()
-        self.update_progress_bar()
+            if hasattr(self, 'selected_filename'):
+                original_filename = self.selected_filename
+            else:
+                original_filename = f"audio_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            
+            # 生成新文件名，加上'Remove_'前缀
+            new_filename = f"Remove_{original_filename}"
+            output_filepath = os.path.join(self.save_dir, new_filename)
 
-        # Save the processed audio with a unique filename
-        output_filename = os.path.join(self.save_dir, f"processed_audio_{datetime.now().strftime('%Y%m%d%H%M%S')}.wav")
-        sf.write(output_filename, reduced_noise_audio, self.audio_sampling_rate)
+            sf.write(output_filepath, self.audio_array, self.audio_sampling_rate)
 
-        # 更新录音列表以显示新文件
-        self.load_all_recordings()
-        print(f"Noise-reduced audio saved as {output_filename}.")
+            self.load_all_recordings()
+            print(f"Noise-reduced audio saved as {output_filepath}.")
+        except ValueError as e:
+            print("Caught ValueError while trying to plot waveform:", e)
+
+
         
     def on_listbox_select(self, event):
         widget = event.widget
@@ -486,6 +492,8 @@ class SoundRecorderApp:
         self.audio_visualize_image = image_array
 
         print(f'Draw visualization image of shape: {self.audio_visualize_image.shape}')
+
+
 
     def update_visualize_image(self):
         img_start_idx = int(self.start_frame / len(self.frames) * 1000)
