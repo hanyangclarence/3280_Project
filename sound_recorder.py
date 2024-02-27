@@ -38,7 +38,6 @@ class SoundRecorderApp:
         self.format = pyaudio.paInt16
         self.channels = channels
         self.rate = sampling_rate
-        self.frame_duration_ms = 30  # Define the duration of each frame in milliseconds
 
         # Recording state
         self.recording = False
@@ -179,6 +178,7 @@ class SoundRecorderApp:
 
     def setup_replay(self):
         self.current_frame = self.start_frame
+        self.playing_current_frame = int(self.current_frame / len(self.frames) * len(self.playing_frames))
         self.is_paused = True
 
         self.play_pause_button.config(state=tk.NORMAL)
@@ -347,29 +347,30 @@ class SoundRecorderApp:
             f.write(text)
 
     def convert_audio_to_text(self):
-        # obj = AudioToText(self.audio_array, self.save_dir, self.language)
-        # text = obj.get_text()
-        # obj.write_to_text_file(text)
 
+        # Convert your audio array and sample rate to an AudioData object
         audio_data_int = np.int16(self.audio_array * 32767)
         audio_data = sr.AudioData(audio_data_int.tobytes(), self.rate, 2)
 
+        # use the speech_recognition library's recognizer to recognize this AudioData object
         recognizer = sr.Recognizer()
         try:
+            # sphinx
             text = recognizer.recognize_sphinx(audio_data, language='en-US')
             self.write_to_text_file(text)
-            print("识别结果：", text)
+            print("Identify Results：", text)
         except sr.UnknownValueError:
-            print("无法识别的音频")
+            print("Unrecognized audio")
         except sr.RequestError as e:
-            print(f"从服务请求结果时出错：{e}")
+            print(f"An error occurred while requesting results from the service：{e}")
 
     def remove_background_noise(self):
+
         if self.audio_array is None or self.audio_sampling_rate is None:
             print("No audio loaded for noise reduction.")
             return
 
-        # Check if sample rate is supported by WebRTC VAD
+        # Check if the original sample rate is supported by WebRTC VAD. If not, resample the audio.
         supported_rates = [8000, 16000, 32000, 48000]
         if self.audio_sampling_rate not in supported_rates:
             print(f"Original sample rate ({self.audio_sampling_rate} Hz) is not supported by WebRTC VAD. Resampling...")
@@ -380,7 +381,6 @@ class SoundRecorderApp:
             self.audio_sampling_rate = target_rate
             print(f"Audio has been resampled to {target_rate} Hz.")
 
-        # Proceed with VAD and noise reduction as before
         # Convert audio from float to int16, ensuring compatibility with WebRTC VAD
         audio_data_int16 = (self.audio_array * 32768).astype(np.int16)
 
@@ -406,22 +406,33 @@ class SoundRecorderApp:
         reduced_noise_audio = nr.reduce_noise(y=filtered_audio_data, sr=self.audio_sampling_rate)
 
         self.audio_array = reduced_noise_audio
+        try:
+            self.plot_waveform()
+            self.update_visualize_image()
+            self.update_progress_bar()
 
-        # Update GUI components as necessary
-        self.plot_waveform()
-        self.update_visualize_image()
-        self.update_progress_bar()
+            if hasattr(self, 'selected_filename'):
+                original_filename = self.selected_filename
+            else:
+                original_filename = f"audio_{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
-        # Save the processed audio with a unique filename
-        output_filename = os.path.join(self.save_dir, f"processed_audio_{datetime.now().strftime('%Y%m%d%H%M%S')}.wav")
-        #sf.write(output_filename, reduced_noise_audio, self.audio_sampling_rate)
-        reduced_noise_audio = ReadWrite.waveform_to_frames(reduced_noise_audio)
-        ReadWrite.write_wav(reduced_noise_audio, output_filename, self.audio_sampling_rate, 1, 2)
+            # Save the processed audio with a unique filename
+            output_filename = os.path.join(self.save_dir, f"processed_audio_{datetime.now().strftime('%Y%m%d%H%M%S')}.wav")
+            # Generate a new file name, prefixed with 'Remove_'
+            new_filename = f"Remove_{original_filename}"
+            output_filepath = os.path.join(self.save_dir, new_filename)
 
-        # 更新录音列表以显示新文件
-        self.load_all_recordings()
-        print(f"Noise-reduced audio saved as {output_filename}.")
+            #sf.write(output_filename, reduced_noise_audio, self.audio_sampling_rate)
+            reduced_noise_audio = ReadWrite.waveform_to_frames(reduced_noise_audio)
+            ReadWrite.write_wav(reduced_noise_audio, output_filename, self.audio_sampling_rate, 1, 2)
 
+            self.load_all_recordings()
+            print(f"Noise-reduced audio saved as {output_filepath}.")
+        except ValueError as e:
+            print("Caught ValueError while trying to plot waveform:", e)
+
+
+        
     def on_listbox_select(self, event):
         widget = event.widget
         current_selection = widget.curselection()
@@ -506,6 +517,9 @@ class SoundRecorderApp:
         self.start_frame = 0
         self.end_frame = len(self.frames)
 
+        self.current_frame = 0
+        self.is_paused = True
+
         self.plot_waveform()
         self.update_visualize_image()
         self.update_progress_bar()
@@ -572,6 +586,8 @@ class SoundRecorderApp:
 
         print(f'Draw visualization image of shape: {self.audio_visualize_image.shape}')
 
+
+
     def update_visualize_image(self):
         img_start_idx = int(self.start_frame / len(self.frames) * 1000)
         img_end_idx = int(self.end_frame / len(self.frames) * 1000)
@@ -599,6 +615,7 @@ class SoundRecorderApp:
         clicked_frame = max(self.start_frame, clicked_frame)
         clicked_frame = min(self.end_frame, clicked_frame)
         self.current_frame = clicked_frame
+        self.playing_current_frame = int(self.current_frame / len(self.frames) * len(self.playing_frames))
         self.update_progress_bar()
         print(f'current frame update: {self.current_frame}')
 
@@ -611,6 +628,7 @@ class SoundRecorderApp:
 
         # update the progressbar accordingly
         self.current_frame = max(self.current_frame, self.start_frame)
+        self.playing_current_frame = int(self.current_frame / len(self.frames) * len(self.playing_frames))
         self.update_progress_bar()
 
         print(f'trim: start: {self.start_frame}, end: {self.end_frame}')
@@ -631,6 +649,7 @@ class SoundRecorderApp:
 
         # update the progressbar accordingly
         self.current_frame = min(self.current_frame, self.end_frame)
+        self.playing_current_frame = int(self.current_frame / len(self.frames) * len(self.playing_frames))
         self.update_progress_bar()
 
         print(f'trim: start: {self.start_frame}, end: {self.end_frame}')
