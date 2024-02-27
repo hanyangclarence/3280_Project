@@ -38,7 +38,6 @@ class SoundRecorderApp:
         self.format = pyaudio.paInt16
         self.channels = channels
         self.rate = sampling_rate
-        self.frame_duration_ms = 30  # Define the duration of each frame in milliseconds
 
         # Recording state
         self.recording = False
@@ -512,6 +511,7 @@ class SoundRecorderApp:
 
         self.start_frame = 0
         self.end_frame = len(self.frames)
+        self.is_paused = True
 
         self.plot_waveform()
         self.update_visualize_image()
