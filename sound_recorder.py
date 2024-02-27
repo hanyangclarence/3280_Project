@@ -1,31 +1,23 @@
 import tkinter as tk
-from tkinter import messagebox
-from tkinter import ttk
+from tkinter import messagebox, ttk
 import os
-
 import numpy as np
 import pyaudio
 import threading
 import time
-# import wave
-import librosa
-import soundfile
+import io
+
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import io
 from PIL import Image, ImageTk
-import ReadWrite
 
-import tempfile
+import librosa
 import webrtcvad
 import noisereduce as nr
-import soundfile as sf
-# import progressbar
-
 import speech_recognition as sr
-# from pydub import AudioSegment
-# from pydub.silence import split_on_silence
 from datetime import datetime
+
+import ReadWrite
 
 
 class SoundRecorderApp:
@@ -244,10 +236,8 @@ class SoundRecorderApp:
         bytes_arr = [tobytes[i:i+4096] for i in range(0, len(tobytes), 4096)]
         return bytes_arr
 
-
     def _setup_gui(self, master):
-        # Set the initial size of the window
-        master.geometry('1000x600')  # Width x Height in pixels
+        master.geometry('1000x600')  # Width x Height
 
         # Create the upper and lower frames
         self.upper_frame = tk.Frame(master, height=250, width=1000)
@@ -330,15 +320,12 @@ class SoundRecorderApp:
 
     def write_to_text_file(self, text):
         """ Write a text to a file. """
-        # 生成一个带时间戳的文件名
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
         filename = f"outputText_{timestamp}.txt"
 
-        # 确保 save_dir 是目录路径
         if os.path.isdir(self.save_dir):
             file_path = os.path.join(self.save_dir, filename)
         else:
-            # 如果 save_dir 是文件路径，直接使用它，但要确保文件名不重复
             save_dir, ext = os.path.splitext(self.save_dir)
             file_path = f"{save_dir}_{timestamp}{ext}"
 
@@ -422,7 +409,7 @@ class SoundRecorderApp:
             new_filename = f"Remove_{original_filename}"
             output_filepath = os.path.join(self.save_dir, new_filename)
 
-            #sf.write(output_filename, reduced_noise_audio, self.audio_sampling_rate)
+            # sf.write(output_filename, reduced_noise_audio, self.audio_sampling_rate)
             reduced_noise_audio = ReadWrite.waveform_to_frames(reduced_noise_audio)
             ReadWrite.write_wav(reduced_noise_audio, output_filename, self.audio_sampling_rate, 1, 2)
 
@@ -431,8 +418,6 @@ class SoundRecorderApp:
         except ValueError as e:
             print("Caught ValueError while trying to plot waveform:", e)
 
-
-        
     def on_listbox_select(self, event):
         widget = event.widget
         current_selection = widget.curselection()
@@ -489,7 +474,7 @@ class SoundRecorderApp:
         filepath = os.path.join(self.save_dir, selected_filename)
 
         # DONE: load the audio into ndarray with our own function
-        #waveform, sr = librosa.load(filepath, sr=None)
+        # waveform, sr = librosa.load(filepath, sr=None)
         self.frames, sr, channels, bps = ReadWrite.read_wav(filepath)
         self.audio_sampling_rate = sr
         self.audio_array = ReadWrite.frames_to_waveform(self.frames)
@@ -585,8 +570,6 @@ class SoundRecorderApp:
         self.audio_visualize_image = image_array
 
         print(f'Draw visualization image of shape: {self.audio_visualize_image.shape}')
-
-
 
     def update_visualize_image(self):
         img_start_idx = int(self.start_frame / len(self.frames) * 1000)
