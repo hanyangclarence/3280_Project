@@ -141,8 +141,8 @@ class SoundRecorderApp:
             self.is_paused = False
             self.play_pause_button.config(text="Pause")
             # Resume playback in a new thread to avoid blocking the GUI
-            self.playing_thread=threading.Thread(target=self.play_frames_from_current)
-            self.playing_thread.daemon=True
+            self.playing_thread = threading.Thread(target=self.play_frames_from_current)
+            self.playing_thread.daemon = True
             self.playing_thread.start()
         else:
             self.is_paused = True
@@ -255,12 +255,12 @@ class SoundRecorderApp:
         self.right_frame = tk.Frame(self.upper_frame, borderwidth=2, relief="groove")
         self.right_frame.pack(side="right", fill="both", expand=True)
 
-        # Setup widget
-        # Listbox in the left frame
+        # setup widget
+        # listbox in the left frame
         self.recordings_listbox = tk.Listbox(self.left_frame)
         self.recordings_listbox.pack(expand=True, fill='both', side="left")
-        # Bind the selection event to the listbox
-        # This allows enabling and disabling "play" button when selecting items in the list
+        # bind the selection event to the listbox
+        # this allows enabling and disabling "play" button when selecting items in the list
         self.last_selected_index = -1
         self.recordings_listbox.bind('<<ListboxSelect>>', self.on_listbox_select)
 
@@ -345,11 +345,11 @@ class SoundRecorderApp:
             # sphinx
             text = recognizer.recognize_sphinx(audio_data, language='en-US')
             self.write_to_text_file(text)
-            print("Identify Results：", text)
+            print("Identify Results:", text)
         except sr.UnknownValueError:
             print("Unrecognized audio")
         except sr.RequestError as e:
-            print(f"An error occurred while requesting results from the service：{e}")
+            print(f"An error occurred while requesting results from the service: {e}")
 
     def remove_background_noise(self):
 
@@ -661,7 +661,7 @@ class SoundRecorderApp:
         wav_start_idx = int(self.start_frame / len(self.frames) * self.audio_array.shape[0])
         wav_end_idx = int(self.end_frame / len(self.frames) * self.audio_array.shape[0])
         # DONE: replace this with our own function
-        #soundfile.write(save_path, self.audio_array[wav_start_idx:wav_end_idx], samplerate=self.audio_sampling_rate)
+        # soundfile.write(save_path, self.audio_array[wav_start_idx:wav_end_idx], samplerate=self.audio_sampling_rate)
         waveform = ReadWrite.waveform_to_frames(self.audio_array[wav_start_idx:wav_end_idx], sample_rate=self.audio_sampling_rate)
         ReadWrite.write_wav(waveform, save_path, rate=self.audio_sampling_rate, channels=self.channels)
 
