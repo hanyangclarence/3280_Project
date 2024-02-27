@@ -188,12 +188,15 @@ class SoundRecorderApp:
         print(n_steps)
         speed = self.speed_scale.get()
         print(speed)
+
+        trimmed_frames = self.frames[self.start_frame:self.end_frame]
+
         if speed != 1.0:
-            self.playing_frames = self.change_speed(speed,self.frames)
+            self.playing_frames = self.change_speed(speed, trimmed_frames)
             self.playing_current_frame = round(self.current_frame / speed)
-            self.playing_end_frame = round(self.end_frame / speed)
+            self.playing_end_frame = len(self.playing_frames)
         else:
-            self.playing_frames = self.frames
+            self.playing_frames = trimmed_frames
             self.playing_current_frame = self.current_frame
             self.playing_end_frame = self.end_frame
 
@@ -207,13 +210,13 @@ class SoundRecorderApp:
         if n_steps != 0:
             original_length = len(self.playing_frames)
             self.playing_frames = self.change_pitch(self.playing_frames, n_steps)
-            self.playing_current_frame = round(self.playing_current_frame *len(self.playing_frames)/original_length)
-            self.playing_end_frame = round(self.playing_end_frame *len(self.playing_frames)/original_length)
+            self.playing_current_frame = 0  # Start playing from the beginning of the audio
+            self.playing_end_frame = len(self.playing_frames)
 
-        # else:
-        #     self.playing_frames = self.frames
-        #     self.playing_current_frame = self.current_frame
-        #     self.playing_end_frame = self.end_frame
+        else:
+            self.playing_frames = self.frames
+            self.playing_current_frame = self.current_frame
+            self.playing_end_frame = self.end_frame
 
         # while not self.is_paused and self.playing_current_frame < self.playing_end_frame:
         #     data = self.playing_frames[self.playing_current_frame]
@@ -256,7 +259,6 @@ class SoundRecorderApp:
         y = arr.astype(np.float32)
         sr = self.audio_sampling_rate
         original_length = len(y)
-
         try:
             # Perform pitch shifting using FFT
             y_shifted = self.pitch_shift_fft(y, sr, n_steps)
@@ -279,8 +281,6 @@ class SoundRecorderApp:
         y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
 
         return y_shifted
-
-
     def realtime_visualization(self, frames):
         leng = 512
         self.ax.clear()
@@ -323,6 +323,7 @@ class SoundRecorderApp:
             self.plot_style = 1
         else:
             self.plot_style += 1
+
     def change_speed(self, speed,frames):
         arr = np.frombuffer(b''.join(frames), dtype=np.int16)
         new_length = int(len(arr) / speed)
@@ -465,28 +466,27 @@ class SoundRecorderApp:
         # self.adjust_pitch_button = tk.Button(self.right_frame, text="Adjust Pitch", command=self.adjust_pitch, state=tk.DISABLED)
         # self.adjust_pitch_button.pack(fill='x')
 
-        # frame for pitch adjusting scale
         self.inner_frame_1 = tk.Frame(self.right_frame)
         self.inner_frame_1.pack(pady=20)
 
-
+        # 添加一个标题标签来描述调整音调的滑动模块
         title_label_1 = tk.Label(self.inner_frame_1, text="Adjust Pitch", font=("Arial", 12, "bold"))
         title_label_1.pack()
 
-        # scale of pitch adjusting
+        # 创建一个滑动条来选择音调调整的步长
         self.n_steps = tk.Scale(self.inner_frame_1, from_=-16, to=16, resolution=1, orient="horizontal", length=200)
         self.n_steps.pack()
         self.n_steps.set(0.0)
 
-        # frame for speed changing scale
+        # 创建第二个滑动模块用于调整速度
         self.inner_frame_2 = tk.Frame(self.right_frame)
         self.inner_frame_2.pack(pady=20)
 
-
+        # 添加一个标题标签来描述调整速度的滑动模块
         title_label_2 = tk.Label(self.inner_frame_2, text="Adjust Speed", font=("Arial", 12, "bold"))
         title_label_2.pack()
 
-        # scale of speed changing
+        # 创建一个滑动条来选择速度调整的比例
         self.speed_scale = tk.Scale(self.inner_frame_2, from_=0.5, to=2, resolution=0.05, orient="horizontal", length=200)
         self.speed_scale.pack()
         self.speed_scale.set(1.0)
