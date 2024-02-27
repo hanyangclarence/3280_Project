@@ -371,11 +371,11 @@ class SoundRecorderApp:
         master.geometry('1500x900')  # Width x Height
 
         # Create the upper and lower frames
-        self.upper_frame = tk.Frame(master, height=250, width=1000)
+        self.upper_frame = tk.Frame(master, height=400, width=1500)
         self.upper_frame.pack(side="top", fill="both", expand=True)
         self.upper_frame.pack_propagate(False)  # Prevent the frame from resizing to fit its contents
 
-        self.lower_frame = tk.Frame(master, height=350, width=1000)
+        self.lower_frame = tk.Frame(master, height=500, width=1500)
         self.lower_frame.pack(side="bottom", fill="both", expand=True)
         self.lower_frame.pack_propagate(False)  # Prevent the frame from resizing to fit its contents
 
@@ -468,7 +468,7 @@ class SoundRecorderApp:
         # Add a progress bar
         self.progress_bar = ttk.Progressbar(self.lower_frame, orient='horizontal', mode='determinate')
         self.progress_bar.pack(side='bottom', fill='x', pady=10)
-        self.progress_bar['maximum'] = 1000
+        self.progress_bar['maximum'] = 1500
         self.progress_bar.bind("<Button-1>", self.on_left_mouse_click_progressbar)
 
     def write_to_text_file(self, text):
@@ -695,7 +695,7 @@ class SoundRecorderApp:
         t = np.arange(len(self.audio_array)) / self.audio_sampling_rate  # Time axis
 
         # Create the plot
-        fig, ax = plt.subplots(figsize=(10, 3))
+        fig, ax = plt.subplots(figsize=(15, 4))
         # Plot the waveform
         ax.plot(t, self.audio_array, linewidth=1)
 
@@ -714,7 +714,7 @@ class SoundRecorderApp:
         image = Image.open(buf)
 
         # Convert PIL Image to NumPy array
-        image_array = np.array(image)   # shape (400, 1000), dtype = uint8
+        image_array = np.array(image)   # shape (400, 1500), dtype = uint8
 
         # Close the buffer
         buf.close()
@@ -724,8 +724,8 @@ class SoundRecorderApp:
         print(f'Draw visualization image of shape: {self.audio_visualize_image.shape}')
 
     def update_visualize_image(self):
-        img_start_idx = int(self.start_frame / len(self.frames) * 1000)
-        img_end_idx = int(self.end_frame / len(self.frames) * 1000)
+        img_start_idx = int(self.start_frame / len(self.frames) * 1500)
+        img_end_idx = int(self.end_frame / len(self.frames) * 1500)
         mask = np.ones_like(self.audio_visualize_image, dtype=np.float32)
         mask[:, :img_start_idx] = 0.5
         mask[:, img_end_idx:] = 0.5
@@ -740,13 +740,13 @@ class SoundRecorderApp:
         self.visualization_frame.configure(image=self.photo_image)
 
     def update_progress_bar(self):
-        current_pos = int(self.playing_current_frame / len(self.playing_frames) * 1000) if len(self.playing_frames) > 0 else 0
+        current_pos = int(self.playing_current_frame / len(self.playing_frames) * 1500) if len(self.playing_frames) > 0 else 0
         self.progress_bar['value'] = current_pos
 
     def on_left_mouse_click_progressbar(self, event):
         if self.audio_array is None:  # If no audio is loaded
             return
-        clicked_frame = int(event.x / 1000 * len(self.frames))
+        clicked_frame = int(event.x / 1500 * len(self.frames))
         clicked_frame = max(self.start_frame, clicked_frame)
         clicked_frame = min(self.end_frame, clicked_frame)
         self.current_frame = clicked_frame
@@ -757,7 +757,7 @@ class SoundRecorderApp:
     def on_left_mouse_click_image(self, event):
         if self.audio_array is None:  # If no audio is loaded
             return
-        cut_frame = int(event.x / 1000 * len(self.frames))
+        cut_frame = int(event.x / 1500 * len(self.frames))
         self.start_frame = min(cut_frame, self.end_frame)
         self.update_visualize_image()
 
@@ -778,7 +778,7 @@ class SoundRecorderApp:
     def on_right_mouse_click_image(self, event):
         if self.audio_array is None:  # If no audio is loaded
             return
-        cut_frame = int(event.x / 1000 * len(self.frames))
+        cut_frame = int(event.x / 1500 * len(self.frames))
         self.end_frame = max(cut_frame, self.start_frame)
         self.update_visualize_image()
 
