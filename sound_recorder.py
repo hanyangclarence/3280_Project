@@ -213,11 +213,6 @@ class SoundRecorderApp:
             self.playing_current_frame = 0  # Start playing from the beginning of the audio
             self.playing_end_frame = len(self.playing_frames)
 
-        else:
-            self.playing_frames = self.frames
-            self.playing_current_frame = self.current_frame
-            self.playing_end_frame = self.end_frame
-
         # while not self.is_paused and self.playing_current_frame < self.playing_end_frame:
         #     data = self.playing_frames[self.playing_current_frame]
         #     self.playing_stream.write(data)
