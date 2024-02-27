@@ -178,6 +178,7 @@ class SoundRecorderApp:
 
     def setup_replay(self):
         self.current_frame = self.start_frame
+        self.playing_current_frame = int(self.current_frame / len(self.frames) * len(self.playing_frames))
         self.is_paused = True
 
         self.play_pause_button.config(state=tk.NORMAL)
@@ -511,6 +512,8 @@ class SoundRecorderApp:
 
         self.start_frame = 0
         self.end_frame = len(self.frames)
+
+        self.current_frame = 0
         self.is_paused = True
 
         self.plot_waveform()
@@ -608,6 +611,7 @@ class SoundRecorderApp:
         clicked_frame = max(self.start_frame, clicked_frame)
         clicked_frame = min(self.end_frame, clicked_frame)
         self.current_frame = clicked_frame
+        self.playing_current_frame = int(self.current_frame / len(self.frames) * len(self.playing_frames))
         self.update_progress_bar()
         print(f'current frame update: {self.current_frame}')
 
@@ -620,6 +624,7 @@ class SoundRecorderApp:
 
         # update the progressbar accordingly
         self.current_frame = max(self.current_frame, self.start_frame)
+        self.playing_current_frame = int(self.current_frame / len(self.frames) * len(self.playing_frames))
         self.update_progress_bar()
 
         print(f'trim: start: {self.start_frame}, end: {self.end_frame}')
@@ -640,6 +645,7 @@ class SoundRecorderApp:
 
         # update the progressbar accordingly
         self.current_frame = min(self.current_frame, self.end_frame)
+        self.playing_current_frame = int(self.current_frame / len(self.frames) * len(self.playing_frames))
         self.update_progress_bar()
 
         print(f'trim: start: {self.start_frame}, end: {self.end_frame}')
