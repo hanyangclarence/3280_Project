@@ -347,21 +347,21 @@ class SoundRecorderApp:
 
     def convert_audio_to_text(self):
 
-        # 将你的音频数组和采样率转换为AudioData对象
+        # Convert your audio array and sample rate to an AudioData object
         audio_data_int = np.int16(self.audio_array * 32767)
         audio_data = sr.AudioData(audio_data_int.tobytes(), self.rate, 2)
 
-        # 现在你可以使用speech_recognition库的识别器来识别这个AudioData对象
+        # use the speech_recognition library's recognizer to recognize this AudioData object
         recognizer = sr.Recognizer()
         try:
-            # 这里使用sphinx的识别服务作为示例
+            # sphinx
             text = recognizer.recognize_sphinx(audio_data, language='en-US')
             self.write_to_text_file(text)
-            print("识别结果：", text)
+            print("Identify Results：", text)
         except sr.UnknownValueError:
-            print("无法识别的音频")
+            print("Unrecognized audio")
         except sr.RequestError as e:
-            print(f"从服务请求结果时出错：{e}")
+            print(f"An error occurred while requesting results from the service：{e}")
 
     def remove_background_noise(self):
 
@@ -415,7 +415,7 @@ class SoundRecorderApp:
             else:
                 original_filename = f"audio_{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
-            # 生成新文件名，加上'Remove_'前缀
+            # Generate a new file name, prefixed with 'Remove_'
             new_filename = f"Remove_{original_filename}"
             output_filepath = os.path.join(self.save_dir, new_filename)
 
