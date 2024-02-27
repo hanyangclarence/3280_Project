@@ -375,7 +375,7 @@ class SoundRecorderApp:
         self.upper_frame.pack(side="top", fill="both", expand=True)
         self.upper_frame.pack_propagate(False)  # Prevent the frame from resizing to fit its contents
 
-        self.lower_frame = tk.Frame(master, height=500, width=1500)
+        self.lower_frame = tk.Frame(master, height=350, width=1000)
         self.lower_frame.pack(side="bottom", fill="both", expand=True)
         self.lower_frame.pack_propagate(False)  # Prevent the frame from resizing to fit its contents
 
