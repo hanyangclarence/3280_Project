@@ -1,5 +1,6 @@
 import struct
 import numpy
+import os
 
 
 # write the contents of data to filepath
@@ -13,29 +14,39 @@ def write_wav(data, filepath, rate=44100, channels=2, bytes_per_sample=2):
         file = open(filepath, "wb")
         
         datasize = len(data) * len(data[0])   # every frame element seems to have length 4096
+        if channels==1:
+            datasize *=2
         
         file.write("RIFF".encode())                     # 0-3    RIFF
         file.write(struct.pack('i', 36+datasize))       # 4-7    chunksize = datasize + 36
         file.write("WAVEfmt ".encode())                 # 8-15   WAVEfmt(SPACE)
         file.write(struct.pack('i', 16))                # 16-19  SubchunkSize = 16
         file.write(struct.pack('h', 1))                 # 20-21  AudioFormat = 1
-        file.write(struct.pack('h', channels))          # 22-23  NumOfChannels
+        file.write(struct.pack('h', 2))                 # 22-23  NumOfChannels always 2
         file.write(struct.pack('i', rate))              # 24-27  SampleRate
-        byte_rate = rate * channels * bytes_per_sample
+        byte_rate = rate * 2 * bytes_per_sample
         file.write(struct.pack('i', byte_rate))         # 28-31  ByteRate
-        block_align = channels * bytes_per_sample
+        block_align = 2 * bytes_per_sample
         file.write(struct.pack('h', block_align))       # 32-33  BlockAlign
         bits_per_sample = bytes_per_sample * 8
         file.write(struct.pack('h', bits_per_sample))   # 34-35  BitsPerSample
         file.write("data".encode())                     # 36-39  data
         file.write(struct.pack('i', datasize))          # 40-43  datasize
-        for d in data:
-            file.write(d)           
+        
+        if channels==2:
+            for d in data:
+                file.write(d)
+        elif channels==1:
+            for d in data:
+                for i in range(0, len(d), bytes_per_sample):
+                    file.write(d[i:i+bytes_per_sample])
+                    file.write(d[i:i+bytes_per_sample])
         
         file.close()
         print("Write success")
         return 0
     except Exception as e:
+        os.remove(filepath)
         print("Error during write")
         print(e)
         return 1
@@ -54,6 +65,7 @@ def read_wav(filepath, frame_size=4096):
         assert int.from_bytes(file.read(4), "little")==16, "SubchunkSize is not 16"                 # 16-19  SubchunkSize = 16
         assert int.from_bytes(file.read(2), "little")==1, "AudioFormat is not 1"                    # 20-21  AudioFormat = 1
         channels = int.from_bytes(file.read(2), "little")                                           # 22-23  NumOfChannels
+        assert channels==2, "channels must be 2"
         sample_rate = int.from_bytes(file.read(4), "little")                                        # 24-27  SampleRate
         ByteRate = int.from_bytes(file.read(4), "little")                                           # 28-31  ByteRate
         BlockAlign = int.from_bytes(file.read(2), "little")                                         # 32-33  BlockAlign
@@ -131,3 +143,16 @@ def waveform_to_frames(waveform, frame_size=4096, bytes_per_sample=2, channels=2
                 frames.append(frame)
                 frame = b''
     return frames
+
+#frame total length is doubled due to double channels. len(frames) is also doubled because every frame is broken into 2
+def change_frame_size_and_channels(frames, framesize):
+    print(len(frames[0]))
+    print(framesize)
+    assert len(frames[0])//framesize==4, "frame != 4*framesize, unexpected usage"
+    newframes=[]
+    for frame in frames:
+        newframes.append(frame[0:framesize])
+        newframes.append(frame[framesize:framesize*2])
+        newframes.append(frame[framesize*2:framesize*3])
+        newframes.append(frame[framesize*3:framesize*4])
+    return newframes
