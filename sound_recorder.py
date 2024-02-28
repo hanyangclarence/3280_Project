@@ -53,7 +53,7 @@ class SoundRecorderApp:
         self.playing_frames = []
         self.playing_current_frame = 0
         self.speed_changing_mode = "ola"
-        self.pitch_changing_mode = "FFT"
+        self.pitch_changing_mode = "INTERP"
 
         # Setup all UI Elements
         self._setup_gui(master)
@@ -200,12 +200,6 @@ class SoundRecorderApp:
             self.playing_current_frame = self.current_frame
             self.playing_end_frame = self.end_frame
 
-        # while not self.is_paused and self.playing_current_frame < self.playing_end_frame:
-        #     data = self.playing_frames[self.playing_current_frame]
-        #     self.playing_stream.write(data)
-        #     self.playing_current_frame += 1
-        #     self.update_progress_bar()
-
         while not self.is_paused and self.playing_current_frame < self.playing_end_frame:
             data = self.playing_frames[self.playing_current_frame]
             self.playing_stream.write(data)
@@ -221,12 +215,20 @@ class SoundRecorderApp:
             # Handling the end of playback
             self.setup_replay()
 
+    def pitch_interp(self, y, sr, n_steps):
+        # Time-domain pitch shifting using FFT
+        n = len(y)
+        factor = 2 ** (1.0 * n_steps / 12.0)  # Frequency scaling factor
+        y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
+
+        return y_shifted
+
     def change_pitch(self, frames, n_steps):
-        if self.pitch_changing_mode == "FFT":
+        arr = np.frombuffer(b''.join(frames), dtype=np.int16)
+        y = arr.astype(np.float32)
+        if self.pitch_changing_mode == "INTERP":
             # our speed changing method
             # frames = self.change_speed(1/(2 ** (1.0 * n_steps / 12.0)),frames)
-            arr = np.frombuffer(b''.join(frames), dtype=np.int16)
-            y = arr.astype(np.float32)
             # librosa's speed changing method
             y = librosa.effects.time_stretch(y,rate=1/(2 ** (1.0 * n_steps / 12.0)))
             sr = self.audio_sampling_rate
@@ -244,11 +246,8 @@ class SoundRecorderApp:
             except Exception as e:
                 print(f"Error occurred during pitch shifting: {str(e)}")
                 return frames  # Return original frames if an error occurs
-        else:
-            arr = np.frombuffer(b''.join(frames), dtype=np.int16)
-            y = arr.astype(np.float32)
+        elif self.pitch_changing_mode == "LIBROSA":
             sr = self.audio_sampling_rate  # Correct the sampling rate here
-
             try:
                 # Pitch shifting using librosa
                 y_shifted = librosa.effects.pitch_shift(y=y, sr=sr, n_steps=n_steps)
@@ -262,22 +261,54 @@ class SoundRecorderApp:
             except Exception as e:
                 print(f"Error occurred during pitch shifting: {str(e)}")
                 return frames  # Return original frames if an error occurs
+        else:
+            factor = 2 ** (1.0 * n_steps / 12.0)
+            window_size = 2 ** 13
+            h = 2 ** 11
+            stretched = self.stretch(y, 1.0 / factor, window_size, h)
+            frames_array = self.speedx(stretched[window_size:], factor)
+            frames_array = np.frombuffer(b''.join(frames_array), dtype=np.int16)
+            bytes_arr = [frames_array[i:i + self.chunk_size].tobytes() for i in range(0, len(frames_array), self.chunk_size)]
+            return bytes_arr
 
-    def pitch_shift_fft(self, y, sr, n_steps):
-        # Time-domain pitch shifting using FFT
-        n = len(y)
-        factor = 2 ** (1.0 * n_steps / 12.0)  # Frequency scaling factor
-        y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
+    def speedx(self, sound_array, factor):
+        indices = np.round( np.arange(0, len(sound_array), factor) )
+        indices = indices[indices < len(sound_array)].astype(int)
+        return sound_array[ indices.astype(int) ]
 
-        return y_shifted
+    def stretch(self, sound_array, f, window_size, h):
+        phase  = np.zeros(window_size)
+        hanning_window = np.hanning(window_size)
+        result = np.zeros( int(len(sound_array) /f + window_size), dtype=np.complex128)
+
+        for i in np.arange(0, len(sound_array)-(window_size+h), h*f):
+
+            # two potentially overlapping subarrays
+            a1 = sound_array[int(i): int(i + window_size)]
+            a2 = sound_array[int(i + h): int(i + window_size + h)]
+
+            # resynchronize the second array on the first
+            s1 =  np.fft.fft(hanning_window * a1)
+            s2 =  np.fft.fft(hanning_window * a2)
+            epsilon = 1e-10  # A small value to prevent division by zero
+            phase = (phase + np.angle(s2 / (s1 + epsilon))) % (2 * np.pi)
+            a2_rephased = np.fft.ifft(np.abs(s2)*np.exp(1j*phase))
+
+            # add to result
+            i2 = int(i/f)
+            result[i2 : i2 + window_size] += hanning_window*a2_rephased 
+
+        result = ((2**(16-4)) * result/result.max()) # normalize (16bit)
+
+        return result.astype('int16')
 
     def pitch_mode(self):
-        if self.pitch_changing_mode == "FFT":
-            self.pitch_changing_mode = "LIBROSA"
-            self.pitch_changing_mode_button.config(text="LIBROSA")
-        else:
-            self.pitch_changing_mode = "FFT"
-            self.pitch_changing_mode_button.config(text="FFT")
+        modes = ["INTERP", "LIBROSA", "FFT"]
+        current_index = modes.index(self.pitch_changing_mode)
+        next_index = (current_index + 1) % len(modes)
+        self.pitch_changing_mode = modes[next_index]
+        self.pitch_changing_mode_button.config(text=modes[next_index])
+
 
     def realtime_visualization(self, frames):
         leng = 512
@@ -323,7 +354,7 @@ class SoundRecorderApp:
         else:
             self.plot_style += 1
 
-    def change_speed(self, speed,frames):
+    def change_speed(self, speed, frames):
         arr = np.frombuffer(b''.join(frames), dtype=np.int16)
         new_length = int(len(arr) / speed)
         new_arr = np.zeros(new_length, dtype=np.float64)
@@ -467,7 +498,7 @@ class SoundRecorderApp:
         title_label_1 = tk.Label(self.inner_frame_1, text="Adjust Pitch", font=("Arial", 12, "bold"))
         title_label_1.pack()
 
-        self.n_steps = tk.Scale(self.inner_frame_1, from_=-10, to=10, resolution=1, orient="horizontal", length=200)
+        self.n_steps = tk.Scale(self.inner_frame_1, from_=-10, to=10, orient=tk.HORIZONTAL, length=200, resolution=1.0)
         self.n_steps.pack()
         self.n_steps.set(0.0)
 
@@ -531,6 +562,7 @@ class SoundRecorderApp:
         try:
             # sphinx
             text = recognizer.recognize_sphinx(audio_data, language='en-US')
+            tk.messagebox.showinfo(title='Text', message='The text of the audio: ' + text) 
             self.write_to_text_file(text)
             print("Identify Results:", text)
         except sr.UnknownValueError:
@@ -587,11 +619,11 @@ class SoundRecorderApp:
         self.plot_waveform()
         self.update_visualize_image()
         self.update_progress_bar()
+  
 
         old_filename = self.selected_filename.split('.')[0]
         new_filename = old_filename + '_denoised.wav'
         save_path = os.path.join(self.save_dir, new_filename)
-
         # filename already exists
         audio_id = 0
         while os.path.exists(save_path):
@@ -630,8 +662,7 @@ class SoundRecorderApp:
                 self.noise_reduction_button.config(text="Reduce Noise")
                 self.audio_to_text_button.config(state=tk.NORMAL)
                 self.audio_to_text_button.config(text="Convert to Text")
-                # self.adjust_pitch_button.config(state=tk.NORMAL)
-                # self.adjust_pitch_button.config(text="Adjust Pitch")
+
                 return
 
             else:  # If the current selection is the same as the last selection
