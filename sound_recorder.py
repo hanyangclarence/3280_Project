@@ -23,7 +23,6 @@ import ReadWrite
 
 
 
-
 class SoundRecorderApp:
     def __init__(self, master, save_dir, chunk_size, channels, sampling_rate):
         self.master = master
@@ -320,7 +319,6 @@ class SoundRecorderApp:
             self.setup_replay()
 
     def pitch_interp(self, y, sr, n_steps):
-        # Time-domain pitch shifting using FFT
         n = len(y)
         factor = 2 ** (1.0 * n_steps / 12.0)  # Frequency scaling factor
         y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
