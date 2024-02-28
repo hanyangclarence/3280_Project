@@ -23,7 +23,6 @@ import ReadWrite
 from scipy.signal import resample
 
 
-
 class SoundRecorderApp:
     def __init__(self, master, save_dir, chunk_size, channels, sampling_rate):
         self.master = master
@@ -52,7 +51,6 @@ class SoundRecorderApp:
         # for changing speed
         self.playing_frames = []
         self.playing_current_frame = 0
-        self.playing_end_frame = None
         self.speed_changing_mode = "ola"
 
         # Setup all UI Elements
@@ -63,8 +61,12 @@ class SoundRecorderApp:
         os.makedirs(save_dir, exist_ok=True)
 
         # set up about audio trimming
+        # These two are on original audio
         self.start_frame = None
         self.end_frame = None
+        # These two are on speed changed audio
+        self.playing_start_frame = None
+        self.playing_end_frame = None
 
         # Load existing recordings
         self.load_all_recordings()
@@ -175,7 +177,7 @@ class SoundRecorderApp:
 
     def setup_replay(self):
         self.current_frame = self.start_frame
-        self.playing_current_frame = int(self.current_frame / len(self.frames) * len(self.playing_frames))
+        self.playing_current_frame = self.playing_start_frame
         self.is_paused = True
 
         self.play_pause_button.config(state=tk.NORMAL)
@@ -189,15 +191,19 @@ class SoundRecorderApp:
         speed = self.speed_scale.get()
         print(speed)
 
-        trimmed_frames = self.frames[self.start_frame:self.end_frame]
+        # Disable the bar during playing
+        self.n_steps.config(state=tk.DISABLED)
+        self.speed_scale.config(state=tk.DISABLED)
 
         if speed != 1.0:
-            self.playing_frames = self.change_speed(speed, trimmed_frames)
+            self.playing_frames = self.change_speed(speed, self.frames)
             self.playing_current_frame = round(self.current_frame / speed)
-            self.playing_end_frame = len(self.playing_frames)
+            self.playing_start_frame = int(self.start_frame / len(self.frames) * len(self.playing_frames))
+            self.playing_end_frame = int(self.end_frame / len(self.frames) * len(self.playing_frames))
         else:
-            self.playing_frames = trimmed_frames
+            self.playing_frames = self.frames
             self.playing_current_frame = self.current_frame
+            self.playing_start_frame = self.start_frame
             self.playing_end_frame = self.end_frame
 
         # while not self.is_paused and self.playing_current_frame < self.playing_end_frame:
@@ -210,8 +216,9 @@ class SoundRecorderApp:
         if n_steps != 0:
             original_length = len(self.playing_frames)
             self.playing_frames = self.change_pitch(self.playing_frames, n_steps)
-            self.playing_current_frame = 0  # Start playing from the beginning of the audio
-            self.playing_end_frame = len(self.playing_frames)
+            self.playing_current_frame = int(self.playing_current_frame / original_length * len(self.playing_frames))
+            self.playing_start_frame = int(self.playing_start_frame / original_length * len(self.playing_frames))
+            self.playing_end_frame = int(self.playing_end_frame / original_length * len(self.playing_frames))
 
         # while not self.is_paused and self.playing_current_frame < self.playing_end_frame:
         #     data = self.playing_frames[self.playing_current_frame]
@@ -225,6 +232,10 @@ class SoundRecorderApp:
             self.playing_current_frame += 1
             self.current_frame = round(self.playing_current_frame * speed)
             self.update_progress_bar()
+
+        # Enable the bar when paused or ended
+        self.n_steps.config(state=tk.NORMAL)
+        self.speed_scale.config(state=tk.NORMAL)
 
         if not self.is_paused and self.audio_array is not None:
             # Handling the end of playback
@@ -279,6 +290,7 @@ class SoundRecorderApp:
         y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
 
         return y_shifted
+
     def realtime_visualization(self, frames):
         leng = 512
         self.ax.clear()
@@ -316,6 +328,7 @@ class SoundRecorderApp:
                 self.ax.vlines(range(len(int_frames)), -abs(int_frames)/2, abs(int_frames)/2, alpha=1, linewidths=1)
                 # self.ax.vlines(range(len(int_frames)), 0, int_frames, color='gray', alpha=1,linewidths=1)
         self.canvas_widget.draw()
+
     def change_plot_style(self):
         if self.plot_style == 4:
             self.plot_style = 1
@@ -360,6 +373,7 @@ class SoundRecorderApp:
         tobytes = new_arr.tobytes()
         bytes_arr = [tobytes[i:i+4096] for i in range(0, len(tobytes), 4096)]
         return bytes_arr
+
     def speed_mode(self):
         if self.speed_changing_mode == "ola":
             self.speed_changing_mode = "wsola"
@@ -399,8 +413,6 @@ class SoundRecorderApp:
     #     except Exception as e:
     #         # Catching a general exception for demonstration; specify your exception
     #         print("Caught exception while trying to shift pitch:", e)
-
-
 
     def _setup_gui(self, master):
         master.geometry('1500x900')  # Width x Height
@@ -541,7 +553,6 @@ class SoundRecorderApp:
             print(f"An error occurred while requesting results from the service: {e}")
 
     def remove_background_noise(self):
-
         if self.audio_array is None or self.audio_sampling_rate is None:
             print("No audio loaded for noise reduction.")
             return
@@ -579,32 +590,35 @@ class SoundRecorderApp:
         filtered_audio_data = self.audio_array * vad_mask
 
         # Apply noise reduction
-        reduced_noise_audio = nr.reduce_noise(y=filtered_audio_data, sr=self.audio_sampling_rate)
+        try:
+            reduced_noise_audio = nr.reduce_noise(y=filtered_audio_data, sr=self.audio_sampling_rate)
+        except Exception as e:
+            print(f'Error in noise reduction')
+            print(e)
+            return
 
         self.audio_array = reduced_noise_audio
-        try:
-            self.plot_waveform()
-            self.update_visualize_image()
-            self.update_progress_bar()
+        self.plot_waveform()
+        self.update_visualize_image()
+        self.update_progress_bar()
 
-            if hasattr(self, 'selected_filename'):
-                original_filename = self.selected_filename
-            else:
-                original_filename = f"audio_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        old_filename = self.selected_filename.split('.')[0]
+        new_filename = old_filename + '_denoised.wav'
+        save_path = os.path.join(self.save_dir, new_filename)
 
-            # Generate a new file name, prefixed with 'Remove_'
-            new_filename = f"Remove_{original_filename}"
-            # Save the processed audio with a unique filename
-            output_filename = os.path.join(self.save_dir, f"Remove_{original_filename}")
+        # filename already exists
+        audio_id = 0
+        while os.path.exists(save_path):
+            audio_id += 1
+            new_filename = old_filename + f'_denoised({audio_id}).wav'
+            save_path = os.path.join(self.save_dir, new_filename)
 
-            # sf.write(output_filename, reduced_noise_audio, self.audio_sampling_rate)
-            reduced_noise_audio = ReadWrite.waveform_to_frames(reduced_noise_audio)
-            ReadWrite.write_wav(reduced_noise_audio, output_filename, self.audio_sampling_rate, 1, 2)
+        # sf.write(output_filename, reduced_noise_audio, self.audio_sampling_rate)
+        reduced_noise_audio = ReadWrite.waveform_to_frames(reduced_noise_audio)
+        ReadWrite.write_wav(reduced_noise_audio, save_path, self.audio_sampling_rate, 1, 2)
 
-            self.load_all_recordings()
-            print(f"Noise-reduced audio saved as {output_filename}.")
-        except ValueError as e:
-            print("Caught ValueError while trying to plot waveform:", e)
+        self.load_all_recordings()
+        print(f"Noise-reduced audio saved as {save_path}.")
 
     def on_listbox_select(self, event):
         widget = event.widget
@@ -667,6 +681,8 @@ class SoundRecorderApp:
         self.frames, sr, channels, bps = ReadWrite.read_wav(filepath)
         self.audio_sampling_rate = sr
         self.audio_array = ReadWrite.frames_to_waveform(self.frames)
+        # By default, set self.playing_frames as self.frames, as default there is no speed change
+        self.playing_frames = self.frames
 
         # load the audio into playable stream
         # wf = wave.open(filepath, 'rb')
@@ -688,10 +704,11 @@ class SoundRecorderApp:
         #     data = wf.readframes(self.chunk_size)
         # wf.close()
 
-        self.start_frame = 0
-        self.end_frame = len(self.frames)
+        self.start_frame = self.playing_start_frame = 0
+        self.end_frame = self.playing_end_frame = len(self.frames)
 
         self.current_frame = 0
+        self.playing_current_frame = 0
         self.is_paused = True
 
         self.plot_waveform()
@@ -708,8 +725,10 @@ class SoundRecorderApp:
         if self.playing_stream is not None:
             self.playing_stream.stop_stream()
             self.playing_stream.close()
-        self.current_frame = 0
+        self.current_frame = -1
+        self.playing_current_frame = -1
         self.frames = []
+        self.playing_frames = []
 
         print('Selected file cleaned up')
 
@@ -717,6 +736,8 @@ class SoundRecorderApp:
         self.audio_array = None
         self.start_frame = None
         self.end_frame = None
+        self.playing_start_frame = None
+        self.playing_end_frame = None
         self.selected_filename = None
 
         # Clean up the visualization image
@@ -796,18 +817,20 @@ class SoundRecorderApp:
             return
         cut_frame = int(event.x / 1500 * len(self.frames))
         self.start_frame = min(cut_frame, self.end_frame)
+        cut_playing_frame = int(event.x / 1500 * len(self.playing_frames))
+        self.playing_start_frame = min(cut_playing_frame, self.playing_end_frame)
         self.update_visualize_image()
 
         # update the progressbar accordingly
         self.current_frame = max(self.current_frame, self.start_frame)
-        self.playing_current_frame = int(self.current_frame / len(self.frames) * len(self.playing_frames))
+        self.playing_current_frame = max(self.playing_current_frame, self.playing_start_frame)
         self.update_progress_bar()
 
         print(f'trim: start: {self.start_frame}, end: {self.end_frame}')
 
         # If the audio is trimmed, allow saving
-        if self.start_frame != 0 or self.end_frame != len(self.frames):
-            if self.start_frame < self.end_frame:
+        if self.playing_start_frame != 0 or self.playing_end_frame != len(self.playing_frames):
+            if self.playing_start_frame < self.playing_end_frame:
                 self.save_button.config(state=tk.NORMAL)
                 return
         self.save_button.config(state=tk.DISABLED)
@@ -817,18 +840,20 @@ class SoundRecorderApp:
             return
         cut_frame = int(event.x / 1500 * len(self.frames))
         self.end_frame = max(cut_frame, self.start_frame)
+        cut_playing_frame = int(event.x / 1500 * len(self.playing_frames))
+        self.playing_end_frame = max(cut_playing_frame, self.playing_end_frame)
         self.update_visualize_image()
 
         # update the progressbar accordingly
         self.current_frame = min(self.current_frame, self.end_frame)
-        self.playing_current_frame = int(self.current_frame / len(self.frames) * len(self.playing_frames))
+        self.playing_current_frame = min(self.playing_current_frame, self.playing_end_frame)
         self.update_progress_bar()
 
         print(f'trim: start: {self.start_frame}, end: {self.end_frame}')
 
         # If the audio is trimmed, allow saving
-        if self.start_frame != 0 or self.end_frame != len(self.frames):
-            if self.start_frame < self.end_frame:
+        if self.playing_start_frame != 0 or self.playing_end_frame != len(self.playing_frames):
+            if self.playing_start_frame < self.playing_end_frame:
                 self.save_button.config(state=tk.NORMAL)
                 return
         self.save_button.config(state=tk.DISABLED)
