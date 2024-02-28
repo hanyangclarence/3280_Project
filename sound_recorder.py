@@ -20,7 +20,8 @@ import speech_recognition as sr
 from datetime import datetime
 
 import ReadWrite
-from scipy.signal import resample
+from scipy.signal import hann, resample
+
 
 
 class SoundRecorderApp:
@@ -155,26 +156,6 @@ class SoundRecorderApp:
             self.is_paused = True
             self.play_pause_button.config(text="Play")
 
-    # def play_frames_from_current(self):
-    #         speed = self.speed_scale.get()
-    #         if speed != 1.0:
-    #             self.playing_frames = self.change_speed(speed)
-    #             self.playing_current_frame = round(self.current_frame / speed)
-    #             self.playing_end_frame = len(self.playing_frames)
-    #         else:
-    #             self.playing_frames = self.frames
-    #             self.playing_current_frame = self.current_frame
-    #             self.playing_end_frame = self.end_frame
-    #         while not self.is_paused and self.playing_current_frame < self.playing_end_frame:
-    #             data = self.playing_frames[self.playing_current_frame]
-    #             self.playing_stream.write(data)
-    #             self.playing_current_frame += 1
-    #             self.current_frame = round(self.playing_current_frame * speed)
-    #             self.update_progress_bar()
-    #         if not self.is_paused and self.audio_array is not None:
-    #             # Playing reach the end
-    #             self.setup_replay()
-
     def setup_replay(self):
         self.current_frame = self.start_frame
         self.playing_current_frame = self.playing_start_frame
@@ -206,19 +187,17 @@ class SoundRecorderApp:
             self.playing_start_frame = self.start_frame
             self.playing_end_frame = self.end_frame
 
-        # while not self.is_paused and self.playing_current_frame < self.playing_end_frame:
-        #     data = self.playing_frames[self.playing_current_frame]
-        #     self.playing_stream.write(data)
-        #     self.playing_current_frame += 1
-        #     self.current_frame = round(self.playing_current_frame * speed)
-        #     self.update_progress_bar()
-
         if n_steps != 0:
             original_length = len(self.playing_frames)
             self.playing_frames = self.change_pitch(self.playing_frames, n_steps)
             self.playing_current_frame = int(self.playing_current_frame / original_length * len(self.playing_frames))
             self.playing_start_frame = int(self.playing_start_frame / original_length * len(self.playing_frames))
             self.playing_end_frame = int(self.playing_end_frame / original_length * len(self.playing_frames))
+
+        else:
+            self.playing_frames = self.frames
+            self.playing_current_frame = self.current_frame
+            self.playing_end_frame = self.end_frame
 
         # while not self.is_paused and self.playing_current_frame < self.playing_end_frame:
         #     data = self.playing_frames[self.playing_current_frame]
@@ -472,31 +451,23 @@ class SoundRecorderApp:
 
         self.audio_to_text_button = tk.Button(self.right_frame, text="Convert to Text", command=self.convert_audio_to_text, state=tk.DISABLED)
         self.audio_to_text_button.pack(fill='x')
-
-        # self.adjust_pitch_button = tk.Button(self.right_frame, text="Adjust Pitch", command=self.adjust_pitch, state=tk.DISABLED)
-        # self.adjust_pitch_button.pack(fill='x')
-
+        
         self.inner_frame_1 = tk.Frame(self.right_frame)
         self.inner_frame_1.pack(pady=20)
 
-        # 添加一个标题标签来描述调整音调的滑动模块
         title_label_1 = tk.Label(self.inner_frame_1, text="Adjust Pitch", font=("Arial", 12, "bold"))
         title_label_1.pack()
 
-        # 创建一个滑动条来选择音调调整的步长
         self.n_steps = tk.Scale(self.inner_frame_1, from_=-16, to=16, resolution=1, orient="horizontal", length=200)
         self.n_steps.pack()
         self.n_steps.set(0.0)
 
-        # 创建第二个滑动模块用于调整速度
         self.inner_frame_2 = tk.Frame(self.right_frame)
         self.inner_frame_2.pack(pady=20)
 
-        # 添加一个标题标签来描述调整速度的滑动模块
         title_label_2 = tk.Label(self.inner_frame_2, text="Adjust Speed", font=("Arial", 12, "bold"))
         title_label_2.pack()
 
-        # 创建一个滑动条来选择速度调整的比例
         self.speed_scale = tk.Scale(self.inner_frame_2, from_=0.5, to=2, resolution=0.05, orient="horizontal", length=200)
         self.speed_scale.pack()
         self.speed_scale.set(1.0)
