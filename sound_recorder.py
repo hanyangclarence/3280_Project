@@ -32,8 +32,9 @@ class SoundRecorderApp:
         # Initialize PyAudio parameters
         self.chunk_size = chunk_size
         self.format = pyaudio.paInt16
-        self.channels = channels
+        self.channels = 2
         self.rate = sampling_rate
+        self.bytes_per_sample=2
 
         # Recording state
         self.recording = False
@@ -159,7 +160,7 @@ class SoundRecorderApp:
         total_n_frame = self.end_frame - self.start_frame
         print(f"Recording started to replace {self.start_frame} - {self.end_frame}")
 
-        while count < total_n_frame:
+        while count < total_n_frame//4+1: #2 bytes per sample, 2 channels, but record is one channel
             count += 1
             data = stream.read(self.chunk_size)
             frames.append(data)
@@ -168,6 +169,8 @@ class SoundRecorderApp:
                 self.realtime_visualization(frames)
         stream.stop_stream()
         stream.close()
+        framesize = len(self.frames[0])
+        frames = ReadWrite.change_frame_size_and_channels(frames, framesize)    #frame total length is doubled due to double channel,len(frames) also doubled because every frame is broken into 2
 
         # Setup stop recording
         self.recording = False
@@ -202,7 +205,7 @@ class SoundRecorderApp:
             new_filename = old_filename + f'_replaced({audio_id}).wav'
             save_path = os.path.join(self.save_dir, new_filename)
 
-        ReadWrite.write_wav(self.frames, save_path, rate=self.audio_sampling_rate, channels=self.channels)
+        ReadWrite.write_wav(self.frames, save_path, rate=self.audio_sampling_rate, channels=2)
 
         # Reopen the audio playing stream
         self.playing_stream = self.p.open(
@@ -746,7 +749,7 @@ class SoundRecorderApp:
 
         # sf.write(output_filename, reduced_noise_audio, self.audio_sampling_rate)
         reduced_noise_audio = ReadWrite.waveform_to_frames(reduced_noise_audio)
-        ReadWrite.write_wav(reduced_noise_audio, save_path, self.audio_sampling_rate, 1, 2)
+        ReadWrite.write_wav(reduced_noise_audio, save_path, self.audio_sampling_rate, 2, 2)
 
         self.load_all_recordings()
         print(f"Noise-reduced audio saved as {save_path}.")
