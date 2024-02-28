@@ -20,7 +20,7 @@ import speech_recognition as sr
 from datetime import datetime
 
 import ReadWrite
-from scipy.signal import hann, resample
+
 
 
 
@@ -52,7 +52,7 @@ class SoundRecorderApp:
         # for changing speed
         self.playing_frames = []
         self.playing_current_frame = 0
-        self.speed_changing_mode = "ola"
+        self.speed_changing_mode = "OLA"
         self.pitch_changing_mode = "INTERP"
 
         # Setup all UI Elements
@@ -195,10 +195,6 @@ class SoundRecorderApp:
             self.playing_start_frame = int(self.playing_start_frame / original_length * len(self.playing_frames))
             self.playing_end_frame = int(self.playing_end_frame / original_length * len(self.playing_frames))
 
-        else:
-            self.playing_frames = self.frames
-            self.playing_current_frame = self.current_frame
-            self.playing_end_frame = self.end_frame
 
         while not self.is_paused and self.playing_current_frame < self.playing_end_frame:
             data = self.playing_frames[self.playing_current_frame]
@@ -281,7 +277,7 @@ class SoundRecorderApp:
         hanning_window = np.hanning(window_size)
         result = np.zeros( int(len(sound_array) /f + window_size), dtype=np.complex128)
 
-        for i in np.arange(0, len(sound_array)-(window_size+h), h*f):
+        for i in np.arange(0, len(sound_array)-(window_size+h), round(h*f)):
 
             # two potentially overlapping subarrays
             a1 = sound_array[int(i): int(i + window_size)]
@@ -300,7 +296,7 @@ class SoundRecorderApp:
 
         result = ((2**(16-4)) * result/result.max()) # normalize (16bit)
 
-        return result.astype('int16')
+        return np.real(result).astype('int16')
 
     def pitch_mode(self):
         modes = ["INTERP", "LIBROSA", "FFT"]
@@ -359,46 +355,53 @@ class SoundRecorderApp:
         new_length = int(len(arr) / speed)
         new_arr = np.zeros(new_length, dtype=np.float64)
         win_size = self.chunk_size * 8
-        hs = int(win_size * 0.5)
-        ha = int(speed * hs)
-        dmax = win_size // 8 # dmax cannot be too large, or 0.5x will produce noise.
-        # generate the hanning window
-        hanning_window = [0] * win_size
-        for i in range(win_size):
-            hanning_window[i] = 0.5 - 0.5 * math.cos(2 * math.pi * i /(win_size - 1))
-        old_pos = 0
-        new_pos = 0
-        while old_pos < len(arr) - win_size and new_pos < len(new_arr) - win_size:
+        if self.speed_changing_mode == "PV-TSM":
+            y = arr.astype(np.float32)
+            new_arr = self.stretch(y, speed, win_size, win_size//4)
+        else:
+            hs = int(win_size * 0.5)
+            ha = int(speed * hs)
+            dmax = win_size // 8 # dmax cannot be too large, or 0.5x will produce noise.
+            # generate the hanning window
+            hanning_window = [0] * win_size
             for i in range(win_size):
-                new_arr[new_pos+i] += arr[old_pos+i] * hanning_window[i]
-            # update old_pos, there are 2 ways
-            if self.speed_changing_mode == "ola":
-                # basic part: straight-forward OLA
-                old_pos += ha
-            else:
-                # enhanced part: WSOLA, find the position of the most similar frame within (old_pos+ha-dmax,old_pos+ha+dmax).
-                sp = max(0, old_pos + ha - dmax)
-                ep = min(len(arr), old_pos + ha + dmax + win_size)
-                # metric of similarity: cross-correlation
-                correlations = np.correlate(arr[sp:ep], arr[old_pos + hs:old_pos + hs + win_size])
-                max_idx, max_value = 0, correlations[0]
-                for i, value in enumerate(correlations):
-                    if value > max_value:
-                        max_idx, max_value = i, value
-                old_pos = sp + max_idx
-            # update new_pos
-            new_pos += hs
+                hanning_window[i] = 0.5 - 0.5 * math.cos(2 * math.pi * i /(win_size - 1))
+            old_pos = 0
+            new_pos = 0
+            while old_pos < len(arr) - win_size and new_pos < len(new_arr) - win_size:
+                for i in range(win_size):
+                    new_arr[new_pos+i] += arr[old_pos+i] * hanning_window[i]
+                # update old_pos, there are 2 ways
+                if self.speed_changing_mode == "OLA":
+                    # basic part: straight-forward OLA
+                    old_pos += ha
+                else:
+                    # enhanced part: WSOLA, find the position of the most similar frame within (old_pos+ha-dmax,old_pos+ha+dmax).
+                    sp = max(0, old_pos + ha - dmax)
+                    ep = min(len(arr), old_pos + ha + dmax + win_size)
+                    # metric of similarity: cross-correlation
+                    correlations = np.correlate(arr[sp:ep], arr[old_pos + hs:old_pos + hs + win_size])
+                    max_idx, max_value = 0, correlations[0]
+                    for i, value in enumerate(correlations):
+                        if value > max_value:
+                            max_idx, max_value = i, value
+                    old_pos = sp + max_idx
+                # update new_pos
+                new_pos += hs
         new_arr = new_arr.astype(np.int16)
         tobytes = new_arr.tobytes()
         bytes_arr = [tobytes[i:i+4096] for i in range(0, len(tobytes), 4096)]
         return bytes_arr
 
     def speed_mode(self):
-        if self.speed_changing_mode == "ola":
-            self.speed_changing_mode = "wsola"
+        if self.speed_changing_mode == "OLA":
+            self.speed_changing_mode = "WSOLA"
             self.speed_changing_mode_button.config(text="WSOLA")
+        elif self.speed_changing_mode == "WSOLA":
+            self.speed_changing_mode = "PV-TSM"
+            self.speed_changing_mode_button.config(text="PV-TSM")
         else:
-            self.speed_changing_mode = "ola"
+            self.speed_changing_mode = "OLA"
             self.speed_changing_mode_button.config(text="OLA")
 
     # def adjust_pitch(self):
