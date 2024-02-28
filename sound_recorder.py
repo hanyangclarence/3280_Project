@@ -485,9 +485,6 @@ class SoundRecorderApp:
                 else:
                     for i in range(win_size):
                         new_arr[new_pos + i] += arr[old_pos + i + delta] * hanning_window[i]
-                # update new_pos and old_pos
-                new_pos += hs
-                old_pos += ha
                 if self.speed_changing_mode == "WSOLA":
                     # enhanced part: WSOLA, find the position of the most similar frame within (old_pos+ha-dmax,old_pos+ha+dmax).
                     sp = max(0, old_pos + ha - dmax)
@@ -499,6 +496,9 @@ class SoundRecorderApp:
                         if value > max_value:
                             max_idx, max_value = i, value
                     delta = max_idx - min(dmax, old_pos + ha)
+                # update new_pos and old_pos
+                new_pos += hs
+                old_pos += ha
         new_arr = new_arr.astype(np.int16)
         tobytes = new_arr.tobytes()
         bytes_arr = [tobytes[i:i+4096] for i in range(0, len(tobytes), 4096)]
