@@ -88,6 +88,18 @@ class SoundRecorderApp:
         self.recording_thread.daemon = True
         self.recording_thread.start()
 
+    def start_replace_recording(self):
+        self.recording = True
+        self.record_button.config(state=tk.DISABLED)
+        self.play_pause_button.config(state=tk.DISABLED)
+        self.stop_button.config(state=tk.DISABLED)
+        self.visualization_frame.pack_forget()
+        self.change_plot_style_button.pack(anchor='ne')
+        self.canvas_widget.get_tk_widget().pack()
+        self.recording_thread = threading.Thread(target=self._record_for_replace)
+        self.recording_thread.daemon = True
+        self.recording_thread.start()
+
     def _record(self):
         stream = self.p.open(
             format=self.format,
@@ -121,6 +133,101 @@ class SoundRecorderApp:
         wf.writeframes(b''.join(frames))
         wf.close()'''
         ReadWrite.write_wav(frames, filepath, self.rate, self.channels, self.p.get_sample_size(self.format))
+
+        print("Recording stopped")
+        self.load_all_recordings()
+
+    def _record_for_replace(self):
+        # Clean up progressbar
+        self.progress_bar['value'] = 0
+
+        # Close the stream for playing audio
+        self.playing_stream.stop_stream()
+        self.playing_stream.close()
+
+        # Reopen a stream for recording
+        stream = self.p.open(
+            format=self.format,
+            channels=self.channels,
+            rate=self.rate,
+            input=True,
+            frames_per_buffer=self.chunk_size
+        )
+
+        frames = []
+        count = 0
+        total_n_frame = self.end_frame - self.start_frame
+        print(f"Recording started to replace {self.start_frame} - {self.end_frame}")
+
+        while count < total_n_frame:
+            count += 1
+            data = stream.read(self.chunk_size)
+            frames.append(data)
+            if count % 5 == 0:
+                # count = 0
+                self.realtime_visualization(frames)
+        stream.stop_stream()
+        stream.close()
+
+        # Setup stop recording
+        self.recording = False
+        self.record_button.config(state=tk.NORMAL)
+        self.stop_button.config(state=tk.DISABLED)
+        self.replace_button.config(state=tk.DISABLED)
+        self.play_pause_button.config(state=tk.NORMAL)
+        self.save_button.config(state=tk.DISABLED)
+        self.noise_reduction_button.config(state=tk.NORMAL)
+        self.audio_to_text_button.config(state=tk.NORMAL)
+        self.play_pause_button.config(text="Play")
+        self.ax.clear()
+        self.ax.axis('off')
+        self.ax.axhline(y=0, color='black', alpha=0)
+        self.canvas_widget.draw()
+        self.canvas_widget.get_tk_widget().pack_forget()
+        self.change_plot_style_button.pack_forget()
+        self.visualization_frame.pack(fill='both', expand=True)
+
+        # Replace the corresponding frames in self.frames
+        for i in range(total_n_frame):
+            self.frames[self.start_frame + i] = frames[i]
+
+        old_filename = self.selected_filename.split('.')[0]
+        new_filename = old_filename + '_replaced.wav'
+        save_path = os.path.join(self.save_dir, new_filename)
+
+        # if the filename already exists
+        audio_id = 0
+        while os.path.exists(save_path):
+            audio_id += 1
+            new_filename = old_filename + f'_replaced({audio_id}).wav'
+            save_path = os.path.join(self.save_dir, new_filename)
+
+        ReadWrite.write_wav(self.frames, save_path, rate=self.audio_sampling_rate, channels=self.channels)
+
+        # Reopen the audio playing stream
+        self.playing_stream = self.p.open(
+            format=self.format,
+            channels=self.channels,
+            rate=self.rate,
+            output=True
+        )
+
+        # Update other visualizations, indexing, ...
+        self.audio_sampling_rate = self.rate
+        self.audio_array = ReadWrite.frames_to_waveform(self.frames)
+        self.playing_frames = self.frames
+
+        self.start_frame = self.playing_start_frame = 0
+        self.end_frame = self.playing_end_frame = len(self.frames)
+        self.current_frame = 0
+        self.playing_current_frame = 0
+        self.is_paused = True
+        self.selected_filename = os.path.basename(save_path)
+        print(f'!!!! {self.selected_filename}')
+
+        self.plot_waveform()
+        self.update_visualize_image()
+        self.update_progress_bar()
 
         print("Recording stopped")
         self.load_all_recordings()
@@ -489,6 +596,9 @@ class SoundRecorderApp:
         self.save_button = tk.Button(self.right_frame, text='Save', command=self.save_trimmed_audio, state=tk.DISABLED)
         self.save_button.pack(fill='x')
 
+        self.replace_button = tk.Button(self.right_frame, text='Replace', command=self.start_replace_recording, state=tk.DISABLED)
+        self.replace_button.pack(fill='x')
+
         self.noise_reduction_button = tk.Button(self.right_frame, text="Reduce Noise", command=self.remove_background_noise, state=tk.DISABLED)
         self.noise_reduction_button.pack(fill='x')
 
@@ -698,7 +808,7 @@ class SoundRecorderApp:
 
         # DONE: load the audio into ndarray with our own function
         # waveform, sr = librosa.load(filepath, sr=None)
-        self.frames, sr, channels, bps = ReadWrite.read_wav(filepath)
+        self.frames, sr, channels, bps = ReadWrite.read_wav(filepath, frame_size=self.chunk_size)
         self.audio_sampling_rate = sr
         self.audio_array = ReadWrite.frames_to_waveform(self.frames)
         # By default, set self.playing_frames as self.frames, as default there is no speed change
@@ -848,10 +958,11 @@ class SoundRecorderApp:
 
         print(f'trim: start: {self.start_frame}, end: {self.end_frame}')
 
-        # If the audio is trimmed, allow saving
+        # If the audio is trimmed, allow saving or replacing
         if self.playing_start_frame != 0 or self.playing_end_frame != len(self.playing_frames):
             if self.playing_start_frame < self.playing_end_frame:
                 self.save_button.config(state=tk.NORMAL)
+                self.replace_button.config(state=tk.NORMAL)
                 return
         self.save_button.config(state=tk.DISABLED)
 
@@ -861,7 +972,7 @@ class SoundRecorderApp:
         cut_frame = int(event.x / 1500 * len(self.frames))
         self.end_frame = max(cut_frame, self.start_frame)
         cut_playing_frame = int(event.x / 1500 * len(self.playing_frames))
-        self.playing_end_frame = max(cut_playing_frame, self.playing_end_frame)
+        self.playing_end_frame = max(cut_playing_frame, self.playing_start_frame)
         self.update_visualize_image()
 
         # update the progressbar accordingly
@@ -871,10 +982,11 @@ class SoundRecorderApp:
 
         print(f'trim: start: {self.start_frame}, end: {self.end_frame}')
 
-        # If the audio is trimmed, allow saving
+        # If the audio is trimmed, allow saving or replacing
         if self.playing_start_frame != 0 or self.playing_end_frame != len(self.playing_frames):
             if self.playing_start_frame < self.playing_end_frame:
                 self.save_button.config(state=tk.NORMAL)
+                self.replace_button.config(state=tk.NORMAL)
                 return
         self.save_button.config(state=tk.DISABLED)
 
