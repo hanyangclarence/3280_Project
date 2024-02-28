@@ -53,6 +53,7 @@ class SoundRecorderApp:
         self.playing_frames = []
         self.playing_current_frame = 0
         self.speed_changing_mode = "ola"
+        self.pitch_changing_mode = "FFT"
 
         # Setup all UI Elements
         self._setup_gui(master)
@@ -220,47 +221,47 @@ class SoundRecorderApp:
             # Handling the end of playback
             self.setup_replay()
 
-    # def change_pitch(self, frames, n_steps):
-    #     arr = np.frombuffer(b''.join(frames), dtype=np.int16)
-    #     y = arr.astype(np.float32)
-    #     sr = self.audio_sampling_rate  # Correct the sampling rate here
-
-    #     try:
-    #         # Pitch shifting using librosa
-    #         y_shifted = librosa.effects.pitch_shift(y=y, sr=sr, n_steps=n_steps)
-
-    #         # Convert back to int16
-    #         y_shifted_int = y_shifted.astype(np.int16)
-
-    #         # Splitting the shifted audio into frames
-    #         bytes_arr = [y_shifted_int[i:i + self.chunk_size].tobytes() for i in range(0, len(y_shifted_int), self.chunk_size)]
-    #         return bytes_arr
-    #     except Exception as e:
-    #         print(f"Error occurred during pitch shifting: {str(e)}")
-    #         return frames  # Return original frames if an error occurs
-
     def change_pitch(self, frames, n_steps):
-        # our speed changing method
-        # frames = self.change_speed(1/(2 ** (1.0 * n_steps / 12.0)),frames)
-        arr = np.frombuffer(b''.join(frames), dtype=np.int16)
-        y = arr.astype(np.float32)
-        # librosa's speed changing method
-        y = librosa.effects.time_stretch(y,rate=1/(2 ** (1.0 * n_steps / 12.0)))
-        sr = self.audio_sampling_rate
-        original_length = len(y)
-        try:
-            # Perform pitch shifting using FFT
-            y_shifted = self.pitch_shift_fft(y, sr, n_steps)
+        if self.pitch_changing_mode == "FFT":
+            # our speed changing method
+            # frames = self.change_speed(1/(2 ** (1.0 * n_steps / 12.0)),frames)
+            arr = np.frombuffer(b''.join(frames), dtype=np.int16)
+            y = arr.astype(np.float32)
+            # librosa's speed changing method
+            y = librosa.effects.time_stretch(y,rate=1/(2 ** (1.0 * n_steps / 12.0)))
+            sr = self.audio_sampling_rate
+            original_length = len(y)
+            try:
+                # Perform pitch shifting using FFT
+                y_shifted = self.pitch_shift_fft(y, sr, n_steps)
 
-            # Convert back to int16
-            y_shifted_int = y_shifted.astype(np.int16)
+                # Convert back to int16
+                y_shifted_int = y_shifted.astype(np.int16)
 
-            # Splitting the shifted audio into frames
-            bytes_arr = [y_shifted_int[i:i + self.chunk_size].tobytes() for i in range(0, len(y_shifted_int), self.chunk_size)]
-            return bytes_arr
-        except Exception as e:
-            print(f"Error occurred during pitch shifting: {str(e)}")
-            return frames  # Return original frames if an error occurs
+                # Splitting the shifted audio into frames
+                bytes_arr = [y_shifted_int[i:i + self.chunk_size].tobytes() for i in range(0, len(y_shifted_int), self.chunk_size)]
+                return bytes_arr
+            except Exception as e:
+                print(f"Error occurred during pitch shifting: {str(e)}")
+                return frames  # Return original frames if an error occurs
+        else:
+            arr = np.frombuffer(b''.join(frames), dtype=np.int16)
+            y = arr.astype(np.float32)
+            sr = self.audio_sampling_rate  # Correct the sampling rate here
+
+            try:
+                # Pitch shifting using librosa
+                y_shifted = librosa.effects.pitch_shift(y=y, sr=sr, n_steps=n_steps)
+
+                # Convert back to int16
+                y_shifted_int = y_shifted.astype(np.int16)
+
+                # Splitting the shifted audio into frames
+                bytes_arr = [y_shifted_int[i:i + self.chunk_size].tobytes() for i in range(0, len(y_shifted_int), self.chunk_size)]
+                return bytes_arr
+            except Exception as e:
+                print(f"Error occurred during pitch shifting: {str(e)}")
+                return frames  # Return original frames if an error occurs
 
     def pitch_shift_fft(self, y, sr, n_steps):
         # Time-domain pitch shifting using FFT
@@ -269,6 +270,14 @@ class SoundRecorderApp:
         y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
 
         return y_shifted
+
+    def pitch_mode(self):
+        if self.pitch_changing_mode == "FFT":
+            self.pitch_changing_mode = "LIBROSA"
+            self.pitch_changing_mode_button.config(text="LIBROSA")
+        else:
+            self.pitch_changing_mode = "FFT"
+            self.pitch_changing_mode_button.config(text="FFT")
 
     def realtime_visualization(self, frames):
         leng = 512
@@ -451,19 +460,24 @@ class SoundRecorderApp:
 
         self.audio_to_text_button = tk.Button(self.right_frame, text="Convert to Text", command=self.convert_audio_to_text, state=tk.DISABLED)
         self.audio_to_text_button.pack(fill='x')
-        
+
         self.inner_frame_1 = tk.Frame(self.right_frame)
-        self.inner_frame_1.pack(pady=20)
+        self.inner_frame_1.pack(pady=10)
 
         title_label_1 = tk.Label(self.inner_frame_1, text="Adjust Pitch", font=("Arial", 12, "bold"))
         title_label_1.pack()
 
-        self.n_steps = tk.Scale(self.inner_frame_1, from_=-16, to=16, resolution=1, orient="horizontal", length=200)
+        self.n_steps = tk.Scale(self.inner_frame_1, from_=-10, to=10, resolution=1, orient="horizontal", length=200)
         self.n_steps.pack()
         self.n_steps.set(0.0)
 
+        label_mode = tk.Label(self.inner_frame_1,text="Mode ")
+        label_mode.pack(anchor="se")
+        self.pitch_changing_mode_button = tk.Button(self.inner_frame_1,text="FFT",width=6,command=self.pitch_mode)
+        self.pitch_changing_mode_button.pack(anchor="se")
+
         self.inner_frame_2 = tk.Frame(self.right_frame)
-        self.inner_frame_2.pack(pady=20)
+        self.inner_frame_2.pack(pady=10)
 
         title_label_2 = tk.Label(self.inner_frame_2, text="Adjust Speed", font=("Arial", 12, "bold"))
         title_label_2.pack()
@@ -471,6 +485,7 @@ class SoundRecorderApp:
         self.speed_scale = tk.Scale(self.inner_frame_2, from_=0.5, to=2, resolution=0.05, orient="horizontal", length=200)
         self.speed_scale.pack()
         self.speed_scale.set(1.0)
+
         label_mode = tk.Label(self.inner_frame_2,text="Mode ")
         label_mode.pack(anchor="se")
         self.speed_changing_mode_button = tk.Button(self.inner_frame_2,text="OLA",width=6,command=self.speed_mode)
