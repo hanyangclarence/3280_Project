@@ -235,7 +235,7 @@ class SoundRecorderApp:
             original_length = len(y)
             try:
                 # Perform pitch shifting using FFT
-                y_shifted = self.pitch_shift_fft(y, sr, n_steps)
+                y_shifted = self.pitch_interp(y, sr, n_steps)
 
                 # Convert back to int16
                 y_shifted_int = y_shifted.astype(np.int16)
@@ -504,7 +504,7 @@ class SoundRecorderApp:
 
         label_mode = tk.Label(self.inner_frame_1,text="Mode ")
         label_mode.pack(anchor="se")
-        self.pitch_changing_mode_button = tk.Button(self.inner_frame_1,text="FFT",width=6,command=self.pitch_mode)
+        self.pitch_changing_mode_button = tk.Button(self.inner_frame_1,text=self.pitch_changing_mode,width=6,command=self.pitch_mode)
         self.pitch_changing_mode_button.pack(anchor="se")
 
         self.inner_frame_2 = tk.Frame(self.right_frame)
