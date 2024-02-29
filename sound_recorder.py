@@ -25,6 +25,9 @@ class BasicSoundRecorder(BaseUI):
         self.channels = 2
         self.rate = sampling_rate
         self.bytes_per_sample = 2
+        
+        #audio class from ReadWrite
+        self.audio = ReadWrite.Audio()
 
         # Recording state
         self.recording = False
@@ -108,7 +111,9 @@ class BasicSoundRecorder(BaseUI):
         wf.setframerate(self.rate)
         wf.writeframes(b''.join(frames))
         wf.close()'''
-        ReadWrite.write_wav(frames, filepath, self.rate, self.channels, self.p.get_sample_size(self.format))
+        #ReadWrite.write_wav(frames, filepath, self.rate, self.channels, self.p.get_sample_size(self.format))
+        self.audio.loadFrames(frames, self.rate, self.channels, self.p.get_sample_size(self.format))
+        self.audio.write(filepath)
 
         print("Recording stopped")
         self.load_all_recordings()
@@ -312,9 +317,14 @@ class BasicSoundRecorder(BaseUI):
 
         # DONE: load the audio into ndarray with our own function
         # waveform, sr = librosa.load(filepath, sr=None)
-        self.frames, sr, channels, bps = ReadWrite.read_wav(filepath, frame_size=self.chunk_size)
+        '''self.frames, sr, channels, bps = ReadWrite.read_wav(filepath, frame_size=self.chunk_size)
         self.audio_sampling_rate = sr
-        self.audio_array = ReadWrite.frames_to_waveform(self.frames)
+        self.audio_array = ReadWrite.frames_to_waveform(self.frames)'''
+        self.audio.read(filepath)
+        sr, channels, bps = self.audio.getInfo()
+        self.audio_sampling_rate = sr
+        self.frames = self.audio.getFrames(self.audio_sampling_rate, self.channels, self.chunk_size, self.bytes_per_sample)
+        self.audio_array = self.audio.getWaveForm(self.audio_sampling_rate, 1, self.bytes_per_sample)
         # By default, set self.playing_frames as self.frames, as default there is no speed change
         self.playing_frames = self.frames
 

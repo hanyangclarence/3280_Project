@@ -44,27 +44,42 @@ class FullSoundRecorder(BasicSoundRecorder):
         stream = self.p.open(
             format=self.format,
             channels=self.channels,
-            rate=self.rate,
+            rate=self.audio.sampleRate,
             input=True,
             frames_per_buffer=self.chunk_size
         )
-
-        frames = []
         count = 0
+        frames = []
         total_n_frame = self.end_frame - self.start_frame
+        framesize = len(self.frames[0])
+        total_data_size = total_n_frame * framesize
+        print("self.audio.channels "+str(self.audio.channels))
+        print("self.channels "+str(self.channels))
+        if self.audio.channels==2 and self.channels==1:
+            print(" self.audio.channels==2 and self.channels==1")
+            total_data_size = total_data_size//2
+        elif self.audio.channels==1 and self.channels==2:
+            print(" self.audio.channels==1 and self.channels==2")
+            total_data_size *= 2
         print(f"Recording started to replace {self.start_frame} - {self.end_frame}")
 
-        while count < total_n_frame//4+1: #2 bytes per sample, 2 channels, but record is one channel
+        data = b''
+        while len(data) < total_data_size:
             count += 1
-            data = stream.read(self.chunk_size)
-            frames.append(data)
+            d = stream.read(self.chunk_size)
+            data += d
+            frames.append(d)
             if count % 5 == 0:
                 self.realtime_visualization(frames)
+        data = data[0:total_data_size]
         stream.stop_stream()
         stream.close()
         print("Recording stopped")
-        framesize = len(self.frames[0])
-        frames = ReadWrite.change_frame_size_and_channels(frames, framesize)    #frame total length is doubled due to double channel,len(frames) also doubled because every frame is broken into 2
+        #frames = ReadWrite.change_frame_size_and_channels(frames, framesize)    
+        if self.audio.channels !=self.channels:
+            tempAudio = ReadWrite.Audio()
+            tempAudio.loadData(data, self.audio_sampling_rate, self.channels, self.bytes_per_sample)    # change to self.channel channels first
+            data = tempAudio.getData(self.audio_sampling_rate, self.audio.channels, self.bytes_per_sample)
 
         # Setup stop recording
         self.recording = False
@@ -79,7 +94,8 @@ class FullSoundRecorder(BasicSoundRecorder):
 
         # Replace the corresponding frames in self.frames
         for i in range(total_n_frame):
-            self.frames[self.start_frame + i] = frames[i]
+            self.frames[self.start_frame + i] = data[i*framesize:(i+1)*framesize]
+        #keeps original framesize
 
         old_filename = self.selected_filename.split('.')[0]
         new_filename = old_filename + '_replaced.wav'
@@ -92,7 +108,9 @@ class FullSoundRecorder(BasicSoundRecorder):
             new_filename = old_filename + f'_replaced({audio_id}).wav'
             save_path = os.path.join(self.save_dir, new_filename)
 
-        ReadWrite.write_wav(self.frames, save_path, rate=self.audio_sampling_rate, channels=2)
+        #ReadWrite.write_wav(self.frames, save_path, rate=self.audio_sampling_rate, channels=2)
+        self.audio.loadFrames(self.frames, self.audio_sampling_rate, self.channels, self.bytes_per_sample)
+        self.audio.write(save_path)
 
         # Update listbox
         self.load_all_recordings()
@@ -344,8 +362,10 @@ class FullSoundRecorder(BasicSoundRecorder):
             save_path = os.path.join(self.save_dir, new_filename)
 
         # sf.write(output_filename, reduced_noise_audio, self.audio_sampling_rate)
-        reduced_noise_audio = ReadWrite.waveform_to_frames(reduced_noise_audio)
-        ReadWrite.write_wav(reduced_noise_audio, save_path, self.audio_sampling_rate, 2, 2)
+        '''reduced_noise_audio = ReadWrite.waveform_to_frames(reduced_noise_audio)
+        ReadWrite.write_wav(reduced_noise_audio, save_path, self.audio_sampling_rate, 2, 2)'''
+        self.audio.loadWaveForm(reduced_noise_audio, self.audio_sampling_rate, self.channels, self.bytes_per_sample)
+        self.audio.write(save_path)
         print(f"Noise-reduced audio saved as {save_path}.")
 
         # Update listbox
@@ -373,8 +393,10 @@ class FullSoundRecorder(BasicSoundRecorder):
         wav_end_idx = int(self.end_frame / len(self.frames) * self.audio_array.shape[0])
         # DONE: replace this with our own function
         # soundfile.write(save_path, self.audio_array[wav_start_idx:wav_end_idx], samplerate=self.audio_sampling_rate)
-        waveform = ReadWrite.waveform_to_frames(self.audio_array[wav_start_idx:wav_end_idx], sample_rate=self.audio_sampling_rate)
-        ReadWrite.write_wav(waveform, save_path, rate=self.audio_sampling_rate, channels=self.channels)
+        '''waveform = ReadWrite.waveform_to_frames(self.audio_array[wav_start_idx:wav_end_idx], sample_rate=self.audio_sampling_rate)
+        ReadWrite.write_wav(waveform, save_path, rate=self.audio_sampling_rate, channels=self.channels)'''
+        self.audio.loadWaveForm(self.audio_array[wav_start_idx:wav_end_idx], self.audio_sampling_rate, self.channels, self.bytes_per_sample)
+        self.audio.write(save_path)
 
         # Update the listbox
         self.load_all_recordings()
