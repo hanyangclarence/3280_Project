@@ -36,8 +36,9 @@ class FullSoundRecorder(BasicSoundRecorder):
         self.progress_bar['value'] = 0
 
         # Close the stream for playing audio
-        self.playing_stream.stop_stream()
-        self.playing_stream.close()
+        if self.playing_stream is not None:
+            self.playing_stream.stop_stream()
+            self.playing_stream.close()
 
         # Reopen a stream for recording
         stream = self.p.open(
@@ -58,23 +59,16 @@ class FullSoundRecorder(BasicSoundRecorder):
             data = stream.read(self.chunk_size)
             frames.append(data)
             if count % 5 == 0:
-                # count = 0
                 self.realtime_visualization(frames)
         stream.stop_stream()
         stream.close()
+        print("Recording stopped")
         framesize = len(self.frames[0])
         frames = ReadWrite.change_frame_size_and_channels(frames, framesize)    #frame total length is doubled due to double channel,len(frames) also doubled because every frame is broken into 2
 
         # Setup stop recording
         self.recording = False
-        self.record_button.config(state=tk.NORMAL)
-        self.stop_button.config(state=tk.DISABLED)
-        self.replace_button.config(state=tk.DISABLED)
-        self.play_pause_button.config(state=tk.NORMAL)
-        self.save_button.config(state=tk.DISABLED)
-        self.noise_reduction_button.config(state=tk.NORMAL)
-        self.audio_to_text_button.config(state=tk.NORMAL)
-        self.play_pause_button.config(text="Play")
+        self.setup_buttons_for_recording_state()
         self.ax.clear()
         self.ax.axis('off')
         self.ax.axhline(y=0, color='black', alpha=0)
@@ -100,33 +94,12 @@ class FullSoundRecorder(BasicSoundRecorder):
 
         ReadWrite.write_wav(self.frames, save_path, rate=self.audio_sampling_rate, channels=2)
 
-        # Reopen the audio playing stream
-        self.playing_stream = self.p.open(
-            format=self.format,
-            channels=self.channels,
-            rate=self.rate,
-            output=True
-        )
-
-        # Update other visualizations, indexing, ...
-        self.audio_sampling_rate = self.rate
-        self.audio_array = ReadWrite.frames_to_waveform(self.frames)
-        self.playing_frames = self.frames
-
-        self.start_frame = self.playing_start_frame = 0
-        self.end_frame = self.playing_end_frame = len(self.frames)
-        self.current_frame = 0
-        self.playing_current_frame = 0
-        self.is_paused = True
-        self.selected_filename = os.path.basename(save_path)
-        print(f'!!!! {self.selected_filename}')
-
-        self.plot_waveform()
-        self.update_visualize_image()
-        self.update_progress_bar()
-
-        print("Recording stopped")
+        # Update listbox
         self.load_all_recordings()
+
+        # Reload the replaced audio
+        self.load_selected_audio(filename=new_filename)
+        self.setup_buttons_for_playable_state()
 
     def pitch_interp(self, y, sr, n_steps):
         # Time-domain pitch shifting using FFT
@@ -392,11 +365,6 @@ class FullSoundRecorder(BasicSoundRecorder):
             print(e)
             return
 
-        self.audio_array = reduced_noise_audio
-        self.plot_waveform()
-        self.update_visualize_image()
-        self.update_progress_bar()
-
         old_filename = self.selected_filename.split('.')[0]
         new_filename = old_filename + '_denoised.wav'
         save_path = os.path.join(self.save_dir, new_filename)
@@ -410,9 +378,14 @@ class FullSoundRecorder(BasicSoundRecorder):
         # sf.write(output_filename, reduced_noise_audio, self.audio_sampling_rate)
         reduced_noise_audio = ReadWrite.waveform_to_frames(reduced_noise_audio)
         ReadWrite.write_wav(reduced_noise_audio, save_path, self.audio_sampling_rate, 2, 2)
-
-        self.load_all_recordings()
         print(f"Noise-reduced audio saved as {save_path}.")
+
+        # Update listbox
+        self.load_all_recordings()
+
+        # Reload the replaced audio
+        self.load_selected_audio(filename=new_filename)
+        self.setup_buttons_for_playable_state()
 
     def save_trimmed_audio(self):
         old_filename = self.selected_filename.split('.')[0]
@@ -437,5 +410,9 @@ class FullSoundRecorder(BasicSoundRecorder):
 
         # Update the listbox
         self.load_all_recordings()
+
+        # Reload the replaced audio
+        self.load_selected_audio(filename=new_filename)
+        self.setup_buttons_for_playable_state()
 
 

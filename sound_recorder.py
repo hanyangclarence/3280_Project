@@ -253,47 +253,57 @@ class BasicSoundRecorder(BaseUI):
         if current_selection:
             current_index = int(current_selection[0])
             if current_index != self.last_selected_index:
-                # An audio is selected, enable certain buttons
+                # A new audio is selected
                 self.last_selected_index = current_index
 
-                # cleanup previous loaded audio and load the new audio into playable
-                self.cleanup_selected_audio()
                 self.load_selected_audio()
-
-                self.play_pause_button.config(state=tk.NORMAL)
-                self.play_pause_button.config(text="Play")
-                self.record_button.config(state=tk.DISABLED)
-                self.stop_button.config(state=tk.DISABLED)
-                self.save_button.config(state=tk.DISABLED)
-                self.noise_reduction_button.config(state=tk.NORMAL)
-                self.noise_reduction_button.config(text="Reduce Noise")
-                self.audio_to_text_button.config(state=tk.NORMAL)
-                self.audio_to_text_button.config(text="Convert to Text")
-
-                return
+                self.setup_buttons_for_playable_state()
 
             else:  # If the current selection is the same as the last selection
                 # Clear the listbox to remove the selection sign
                 widget.selection_clear(current_index)
+                self.last_selected_index = -1  # Reset the last selected index
 
-        self.play_pause_button.config(state=tk.DISABLED)
-        self.play_pause_button.config(text="Play")
-        self.record_button.config(state=tk.NORMAL)
-        self.save_button.config(state=tk.DISABLED)
+                # remove the loaded audio
+                self.cleanup_selected_audio()
+                self.setup_buttons_for_recording_state()
 
-        # remove the loaded audio
-        self.cleanup_selected_audio()
-
-        self.last_selected_index = -1  # Reset the last selected index
-
-    def load_selected_audio(self):
+    def load_selected_audio(self, filename=None):
         # load the audio selected in the listbox into streams and an ndarray
-        if not self.recordings_listbox.curselection():
-            messagebox.showerror("Error", "Please select a recording to play.")
-            return
+        # If the filename is provided, then load the filename
+        # Else, load the audio selected in the listbox
 
-        selected_index = self.recordings_listbox.curselection()[0]
-        selected_filename = self.recordings_listbox.get(selected_index)
+        if filename is None:
+            selected_index = self.recordings_listbox.curselection()[0]
+            selected_filename = self.recordings_listbox.get(selected_index)
+        else:
+            # load the audio specified by filename, and update the listbox selection cursor
+
+            # If the provided filename is already loaded
+            if self.selected_filename == filename:
+                print(f"File {filename} is already loaded!")
+                return
+
+            # Clean up the listbox
+            self.recordings_listbox.selection_clear(0, tk.END)
+            # Get all items in the listbox
+            items = self.recordings_listbox.get(0, tk.END)
+            # Find the index of the filename
+            try:
+                index = items.index(filename)
+                # Select the item that matches the filename
+                self.recordings_listbox.selection_set(index)
+                # Update the record for last selected file idx
+                self.last_selected_index = index
+                selected_filename = filename
+
+            except ValueError:
+                print(f"File {filename} not found in the listbox.")
+                return
+
+        # clean up loaded file if there is any
+        if self.audio_array is not None:
+            self.cleanup_selected_audio()
 
         print(f'Load selected file: {selected_filename}')
 
@@ -338,6 +348,33 @@ class BasicSoundRecorder(BaseUI):
         self.plot_waveform()
         self.update_visualize_image()
         self.update_progress_bar()
+
+    def setup_buttons_for_playable_state(self):
+        # setup buttons when there is a loaded audio
+        self.play_pause_button.config(state=tk.NORMAL)
+        self.play_pause_button.config(text="Play")
+
+        self.record_button.config(state=tk.DISABLED)
+        self.stop_button.config(state=tk.DISABLED)
+        self.save_button.config(state=tk.DISABLED)
+
+        self.noise_reduction_button.config(state=tk.NORMAL)
+        self.noise_reduction_button.config(text="Reduce Noise")
+
+        self.audio_to_text_button.config(state=tk.NORMAL)
+        self.audio_to_text_button.config(text="Convert to Text")
+
+    def setup_buttons_for_recording_state(self):
+        # setup buttons when there is no loaded audio, and it is able to start recording
+        self.play_pause_button.config(state=tk.DISABLED)
+        self.play_pause_button.config(text="Play")
+
+        self.record_button.config(state=tk.NORMAL)
+        self.stop_button.config(state=tk.DISABLED)
+        self.save_button.config(state=tk.DISABLED)
+
+        self.audio_to_text_button.config(state=tk.DISABLED)
+        self.noise_reduction_button.config(state=tk.DISABLED)
 
     def cleanup_selected_audio(self):
         if self.audio_array is None:
