@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox
 import os
 import numpy as np
 import pyaudio
@@ -8,32 +8,23 @@ import time
 import io
 
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from PIL import Image, ImageTk
-import ReadWrite
 import math
 
-import librosa
-import webrtcvad
-import noisereduce as nr
-import speech_recognition as sr
-from datetime import datetime
-
 import ReadWrite
+from base_ui import BaseUI
 
 
-
-class SoundRecorderApp:
+class BasicSoundRecorder(BaseUI):
     def __init__(self, master, save_dir, chunk_size, channels, sampling_rate):
-        self.master = master
-        master.title('Sound Recorder')
+        super().__init__(master)
 
         # Initialize PyAudio parameters
         self.chunk_size = chunk_size
         self.format = pyaudio.paInt16
         self.channels = 2
         self.rate = sampling_rate
-        self.bytes_per_sample=2
+        self.bytes_per_sample = 2
 
         # Recording state
         self.recording = False
@@ -49,14 +40,11 @@ class SoundRecorderApp:
         self.frames = []  # To store frames of the audio file for playback
         self.current_frame = 0  # To keep track of the current frame during playback
         self.is_paused = False  # Playback pause state
+
         # for changing speed
         self.playing_frames = []
         self.playing_current_frame = 0
         self.speed_changing_mode = "OLA"
-        self.pitch_changing_mode = "INTERP"
-
-        # Setup all UI Elements
-        self._setup_gui(master)
 
         # set folder that stores recorded audios
         self.save_dir = os.path.join(os.getcwd(), save_dir)
@@ -70,11 +58,11 @@ class SoundRecorderApp:
         self.playing_start_frame = None
         self.playing_end_frame = None
 
-        # Load existing recordings
-        self.load_all_recordings()
-
         self.recording_thread = None
         self.playing_thread = None
+
+        # Load existing recordings
+        self.load_all_recordings()
 
     def start_recording(self):
         self.recording = True
@@ -85,18 +73,6 @@ class SoundRecorderApp:
         self.change_plot_style_button.pack(anchor='ne')
         self.canvas_widget.get_tk_widget().pack()
         self.recording_thread = threading.Thread(target=self._record)
-        self.recording_thread.daemon = True
-        self.recording_thread.start()
-
-    def start_replace_recording(self):
-        self.recording = True
-        self.record_button.config(state=tk.DISABLED)
-        self.play_pause_button.config(state=tk.DISABLED)
-        self.stop_button.config(state=tk.DISABLED)
-        self.visualization_frame.pack_forget()
-        self.change_plot_style_button.pack(anchor='ne')
-        self.canvas_widget.get_tk_widget().pack()
-        self.recording_thread = threading.Thread(target=self._record_for_replace)
         self.recording_thread.daemon = True
         self.recording_thread.start()
 
@@ -133,103 +109,6 @@ class SoundRecorderApp:
         wf.writeframes(b''.join(frames))
         wf.close()'''
         ReadWrite.write_wav(frames, filepath, self.rate, self.channels, self.p.get_sample_size(self.format))
-
-        print("Recording stopped")
-        self.load_all_recordings()
-
-    def _record_for_replace(self):
-        # Clean up progressbar
-        self.progress_bar['value'] = 0
-
-        # Close the stream for playing audio
-        self.playing_stream.stop_stream()
-        self.playing_stream.close()
-
-        # Reopen a stream for recording
-        stream = self.p.open(
-            format=self.format,
-            channels=self.channels,
-            rate=self.rate,
-            input=True,
-            frames_per_buffer=self.chunk_size
-        )
-
-        frames = []
-        count = 0
-        total_n_frame = self.end_frame - self.start_frame
-        print(f"Recording started to replace {self.start_frame} - {self.end_frame}")
-
-        while count < total_n_frame//4+1: #2 bytes per sample, 2 channels, but record is one channel
-            count += 1
-            data = stream.read(self.chunk_size)
-            frames.append(data)
-            if count % 5 == 0:
-                # count = 0
-                self.realtime_visualization(frames)
-        stream.stop_stream()
-        stream.close()
-        framesize = len(self.frames[0])
-        frames = ReadWrite.change_frame_size_and_channels(frames, framesize)    #frame total length is doubled due to double channel,len(frames) also doubled because every frame is broken into 2
-
-        # Setup stop recording
-        self.recording = False
-        self.record_button.config(state=tk.NORMAL)
-        self.stop_button.config(state=tk.DISABLED)
-        self.replace_button.config(state=tk.DISABLED)
-        self.play_pause_button.config(state=tk.NORMAL)
-        self.save_button.config(state=tk.DISABLED)
-        self.noise_reduction_button.config(state=tk.NORMAL)
-        self.audio_to_text_button.config(state=tk.NORMAL)
-        self.play_pause_button.config(text="Play")
-        self.ax.clear()
-        self.ax.axis('off')
-        self.ax.axhline(y=0, color='black', alpha=0)
-        self.canvas_widget.draw()
-        self.canvas_widget.get_tk_widget().pack_forget()
-        self.change_plot_style_button.pack_forget()
-        self.visualization_frame.pack(fill='both', expand=True)
-
-        # Replace the corresponding frames in self.frames
-        for i in range(total_n_frame):
-            self.frames[self.start_frame + i] = frames[i]
-
-        old_filename = self.selected_filename.split('.')[0]
-        new_filename = old_filename + '_replaced.wav'
-        save_path = os.path.join(self.save_dir, new_filename)
-
-        # if the filename already exists
-        audio_id = 0
-        while os.path.exists(save_path):
-            audio_id += 1
-            new_filename = old_filename + f'_replaced({audio_id}).wav'
-            save_path = os.path.join(self.save_dir, new_filename)
-
-        ReadWrite.write_wav(self.frames, save_path, rate=self.audio_sampling_rate, channels=2)
-
-        # Reopen the audio playing stream
-        self.playing_stream = self.p.open(
-            format=self.format,
-            channels=self.channels,
-            rate=self.rate,
-            output=True
-        )
-
-        # Update other visualizations, indexing, ...
-        self.audio_sampling_rate = self.rate
-        self.audio_array = ReadWrite.frames_to_waveform(self.frames)
-        self.playing_frames = self.frames
-
-        self.start_frame = self.playing_start_frame = 0
-        self.end_frame = self.playing_end_frame = len(self.frames)
-        self.current_frame = 0
-        self.playing_current_frame = 0
-        self.is_paused = True
-        self.selected_filename = os.path.basename(save_path)
-        print(f'!!!! {self.selected_filename}')
-
-        self.plot_waveform()
-        self.update_visualize_image()
-        self.update_progress_bar()
 
         print("Recording stopped")
         self.load_all_recordings()
@@ -278,7 +157,9 @@ class SoundRecorderApp:
 
     def play_frames_from_current(self):
         n_steps = self.n_steps.get()
+        print(n_steps)
         speed = self.speed_scale.get()
+        print(speed)
 
         # Disable the bar during playing
         self.n_steps.config(state=tk.DISABLED)
@@ -302,7 +183,6 @@ class SoundRecorderApp:
             self.playing_start_frame = int(self.playing_start_frame / original_length * len(self.playing_frames))
             self.playing_end_frame = int(self.playing_end_frame / original_length * len(self.playing_frames))
 
-
         while not self.is_paused and self.playing_current_frame < self.playing_end_frame:
             data = self.playing_frames[self.playing_current_frame]
             self.playing_stream.write(data)
@@ -319,98 +199,13 @@ class SoundRecorderApp:
             self.setup_replay()
 
     def pitch_interp(self, y, sr, n_steps):
-        n = len(y)
-        factor = 2 ** (1.0 * n_steps / 12.0)  # Frequency scaling factor
-        y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
-
-        return y_shifted
+        raise NotImplementedError("Subclass must implement abstract method")
 
     def change_pitch(self, frames, n_steps):
-        arr = np.frombuffer(b''.join(frames), dtype=np.int16)
-        y = arr.astype(np.float32)
-        if self.pitch_changing_mode == "INTERP":
-            # our speed changing method
-            # frames = self.change_speed(1/(2 ** (1.0 * n_steps / 12.0)),frames)
-            # librosa's speed changing method
-            y = librosa.effects.time_stretch(y,rate=1/(2 ** (1.0 * n_steps / 12.0)))
-            sr = self.audio_sampling_rate
-            original_length = len(y)
-            try:
-                # Perform pitch shifting using FFT
-                y_shifted = self.pitch_interp(y, sr, n_steps)
+        raise NotImplementedError("Subclass must implement abstract method")
 
-                # Convert back to int16
-                y_shifted_int = y_shifted.astype(np.int16)
-
-                # Splitting the shifted audio into frames
-                bytes_arr = [y_shifted_int[i:i + self.chunk_size].tobytes() for i in range(0, len(y_shifted_int), self.chunk_size)]
-                return bytes_arr
-            except Exception as e:
-                print(f"Error occurred during pitch shifting: {str(e)}")
-                return frames  # Return original frames if an error occurs
-        elif self.pitch_changing_mode == "LIBROSA":
-            sr = self.audio_sampling_rate  # Correct the sampling rate here
-            try:
-                # Pitch shifting using librosa
-                y_shifted = librosa.effects.pitch_shift(y=y, sr=sr, n_steps=n_steps)
-
-                # Convert back to int16
-                y_shifted_int = y_shifted.astype(np.int16)
-
-                # Splitting the shifted audio into frames
-                bytes_arr = [y_shifted_int[i:i + self.chunk_size].tobytes() for i in range(0, len(y_shifted_int), self.chunk_size)]
-                return bytes_arr
-            except Exception as e:
-                print(f"Error occurred during pitch shifting: {str(e)}")
-                return frames  # Return original frames if an error occurs
-        else:
-            factor = 2 ** (1.0 * n_steps / 12.0)
-            window_size = 2 ** 13
-            h = 2 ** 11
-            stretched = self.stretch(y, 1.0 / factor, window_size, h)
-            frames_array = self.speedx(stretched[window_size:], factor)
-            frames_array = np.frombuffer(b''.join(frames_array), dtype=np.int16)
-            bytes_arr = [frames_array[i:i + self.chunk_size].tobytes() for i in range(0, len(frames_array), self.chunk_size)]
-            return bytes_arr
-
-    def speedx(self, sound_array, factor):
-        indices = np.round( np.arange(0, len(sound_array), factor) )
-        indices = indices[indices < len(sound_array)].astype(int)
-        return sound_array[ indices.astype(int) ]
-
-    def stretch(self, sound_array, f, window_size, h):
-        phase  = np.zeros(window_size)
-        hanning_window = np.hanning(window_size)
-        result = np.zeros( int(len(sound_array) /f + window_size), dtype=np.complex128)
-
-        for i in np.arange(0, len(sound_array)-(window_size+h), round(h*f)):
-
-            # two potentially overlapping subarrays
-            a1 = sound_array[int(i): int(i + window_size)]
-            a2 = sound_array[int(i + h): int(i + window_size + h)]
-
-            # resynchronize the second array on the first
-            s1 =  np.fft.fft(hanning_window * a1)
-            s2 =  np.fft.fft(hanning_window * a2)
-            epsilon = 1e-10  # A small value to prevent division by zero
-            phase = (phase + np.angle(s2 / (s1 + epsilon))) % (2 * np.pi)
-            a2_rephased = np.fft.ifft(np.abs(s2)*np.exp(1j*phase))
-
-            # add to result
-            i2 = int(i/f)
-            result[i2 : i2 + window_size] += hanning_window*a2_rephased 
-
-        result = ((2**(16-4)) * result/result.max()) # normalize (16bit)
-
-        return np.real(result).astype('int16')
-
-    def pitch_mode(self):
-        modes = ["INTERP", "LIBROSA", "FFT"]
-        current_index = modes.index(self.pitch_changing_mode)
-        next_index = (current_index + 1) % len(modes)
-        self.pitch_changing_mode = modes[next_index]
-        self.pitch_changing_mode_button.config(text=modes[next_index])
-
+    def change_speed(self, speed, frames):
+        raise NotImplementedError("Subclass must implement abstract method")
 
     def realtime_visualization(self, frames):
         leng = 512
@@ -449,311 +244,6 @@ class SoundRecorderApp:
                 self.ax.vlines(range(len(int_frames)), -abs(int_frames)/2, abs(int_frames)/2, alpha=1, linewidths=1)
                 # self.ax.vlines(range(len(int_frames)), 0, int_frames, color='gray', alpha=1,linewidths=1)
         self.canvas_widget.draw()
-
-    def change_plot_style(self):
-        if self.plot_style == 4:
-            self.plot_style = 1
-        else:
-            self.plot_style += 1
-
-    def change_speed(self, speed, frames):
-        arr = np.frombuffer(b''.join(frames), dtype=np.int16)
-        new_length = int(len(arr) / speed)
-        new_arr = np.zeros(new_length, dtype=np.float64)
-        win_size = self.chunk_size * 8
-        # we have implemented 3 speed-changing algorithms: OLA for basic part, WSOLA and PV-TSM for enhanced part
-        if self.speed_changing_mode == "PV-TSM":
-            y = arr.astype(np.float32)
-            # see the procedure of PV-TSM in self.stretch()
-            new_arr = self.stretch(y, speed, win_size, win_size//4)
-        else:
-            # OLA and WSOLA
-            hs = win_size // 2
-            ha = int(speed * hs)
-            dmax = win_size // 8 # dmax cannot be too large, or 0.5x will produce noise.
-            # calculate the Hann window
-            hanning_window = [0] * win_size
-            for i in range(win_size):
-                hanning_window[i] = 0.5 - 0.5 * math.cos(2 * math.pi * i /(win_size - 1))
-            old_pos = 0
-            new_pos = 0
-            delta = 0
-            while old_pos + delta < len(arr) - win_size and new_pos < new_length - win_size:
-                if self.speed_changing_mode == "OLA":
-                    for i in range(win_size):
-                        new_arr[new_pos+i] += arr[old_pos+i] * hanning_window[i]
-                else:
-                    for i in range(win_size):
-                        new_arr[new_pos + i] += arr[old_pos + i + delta] * hanning_window[i]
-                if self.speed_changing_mode == "WSOLA":
-                    # enhanced part: WSOLA, find the position of the most similar frame within (old_pos+ha-dmax,old_pos+ha+dmax).
-                    sp = max(0, old_pos + ha - dmax)
-                    ep = min(len(arr), old_pos + ha + dmax + win_size)
-                    # metric of similarity: cross-correlation
-                    correlations = np.correlate(arr[sp:ep], arr[old_pos + delta + hs:old_pos + delta + hs + win_size])
-                    max_idx, max_value = 0, correlations[0]
-                    for i, value in enumerate(correlations):
-                        if value > max_value:
-                            max_idx, max_value = i, value
-                    delta = max_idx - min(dmax, old_pos + ha)
-                # update new_pos and old_pos
-                new_pos += hs
-                old_pos += ha
-        new_arr = new_arr.astype(np.int16)
-        tobytes = new_arr.tobytes()
-        bytes_arr = [tobytes[i:i+4096] for i in range(0, len(tobytes), 4096)]
-        return bytes_arr
-
-    def speed_mode(self):
-        if self.speed_changing_mode == "OLA":
-            self.speed_changing_mode = "WSOLA"
-            self.speed_changing_mode_button.config(text="WSOLA")
-        elif self.speed_changing_mode == "WSOLA":
-            self.speed_changing_mode = "PV-TSM"
-            self.speed_changing_mode_button.config(text="PV-TSM")
-        else:
-            self.speed_changing_mode = "OLA"
-            self.speed_changing_mode_button.config(text="OLA")
-
-    # def adjust_pitch(self):
-    #     n_steps = self.n_steps.get()
-    #     print(f"Adjusting pitch by {n_steps} steps.")
-
-    #     if self.audio_array is None or self.audio_sampling_rate is None:
-    #         print("No audio loaded for noise reduction.")
-    #         return
-
-    #     self.audio_array = librosa.effects.pitch_shift(y=self.audio_array, sr=self.audio_sampling_rate, n_steps=n_steps)
-    #     # self.audio_array = 
-    #     try:
-    #         self.plot_waveform()
-    #         self.update_visualize_image()
-    #         self.update_progress_bar()
-
-    #         if hasattr(self, 'selected_filename'):
-    #             original_filename = self.selected_filename
-    #         else:
-    #             original_filename = f"audio_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-
-    #         # Save the processed audio with a unique filename
-    #         output_filename = os.path.join(self.save_dir, f"Pitch_shifted_{original_filename}")
-
-    #         # sf.write(output_filename, reduced_noise_audio, self.audio_sampling_rate)
-    #         pitch_shifted_audio = ReadWrite.waveform_to_frames(self.audio_array)
-    #         ReadWrite.write_wav(pitch_shifted_audio, output_filename, self.audio_sampling_rate, 1, 2)
-    #         self.load_all_recordings()
-    #         print(f"Pitch-shifted audio saved as {output_filepath}.")
-    #     except Exception as e:
-    #         # Catching a general exception for demonstration; specify your exception
-    #         print("Caught exception while trying to shift pitch:", e)
-
-    def _setup_gui(self, master):
-        master.geometry('1500x1000')  # Width x Height
-
-        # Create the upper and lower frames
-        self.upper_frame = tk.Frame(master, height=500, width=1500)
-        self.upper_frame.pack(side="top", fill="both", expand=True)
-        self.upper_frame.pack_propagate(False)  # Prevent the frame from resizing to fit its contents
-
-        self.lower_frame = tk.Frame(master, height=400, width=1000)
-        self.lower_frame.pack(side="bottom", fill="both", expand=True)
-        self.lower_frame.pack_propagate(False)  # Prevent the frame from resizing to fit its contents
-
-        # Subdivide the upper frame into left and right parts
-        self.left_frame = tk.Frame(self.upper_frame, borderwidth=2, relief="groove")
-        self.left_frame.pack(side="left", fill="both", expand=True)
-
-        self.right_frame = tk.Frame(self.upper_frame, borderwidth=2, relief="groove")
-        self.right_frame.pack(side="right", fill="both", expand=True)
-
-        # setup widget
-        # listbox in the left frame
-        self.recordings_listbox = tk.Listbox(self.left_frame)
-        self.recordings_listbox.pack(expand=True, fill='both', side="left")
-        # bind the selection event to the listbox
-        # this allows enabling and disabling "play" button when selecting items in the list
-        self.last_selected_index = -1
-        self.recordings_listbox.bind('<<ListboxSelect>>', self.on_listbox_select)
-
-        # real-time visualization
-        self.fig, self.ax = plt.subplots(figsize=(10,6))
-        self.ax.axis('off')
-        self.fig.patch.set_facecolor('gray')
-        self.fig.patch.set_alpha(0.12)
-        self.canvas_widget = FigureCanvasTkAgg(self.fig, master=self.lower_frame)
-
-        # button to change the style of real-time visualization
-        self.plot_style = 1
-        self.change_plot_style_button = tk.Button(self.lower_frame, text="Change Style", command=self.change_plot_style)
-
-        # Buttons in the right frame
-        self.record_button = tk.Button(self.right_frame, text="Record", command=self.start_recording)
-        self.record_button.pack(fill='x')
-
-        self.stop_button = tk.Button(self.right_frame, text="Stop", command=self.stop_recording, state=tk.DISABLED)
-        self.stop_button.pack(fill='x')
-
-        self.play_pause_button = tk.Button(self.right_frame, text="Play", command=self.toggle_play_pause, state=tk.DISABLED)
-        self.play_pause_button.pack(fill='x')
-        self.master.bind("<space>", self.toggle_play_pause)
-
-        self.save_button = tk.Button(self.right_frame, text='Save', command=self.save_trimmed_audio, state=tk.DISABLED)
-        self.save_button.pack(fill='x')
-
-        self.replace_button = tk.Button(self.right_frame, text='Replace', command=self.start_replace_recording, state=tk.DISABLED)
-        self.replace_button.pack(fill='x')
-
-        self.noise_reduction_button = tk.Button(self.right_frame, text="Reduce Noise", command=self.remove_background_noise, state=tk.DISABLED)
-        self.noise_reduction_button.pack(fill='x')
-
-        self.audio_to_text_button = tk.Button(self.right_frame, text="Convert to Text", command=self.convert_audio_to_text, state=tk.DISABLED)
-        self.audio_to_text_button.pack(fill='x')
-
-        self.inner_frame_1 = tk.Frame(self.right_frame)
-        self.inner_frame_1.pack(pady=10)
-
-        title_label_1 = tk.Label(self.inner_frame_1, text="Adjust Pitch", font=("Arial", 12, "bold"))
-        title_label_1.pack()
-
-        self.n_steps = tk.Scale(self.inner_frame_1, from_=-10, to=10, orient=tk.HORIZONTAL, length=200, resolution=1.0)
-        self.n_steps.pack()
-        self.n_steps.set(0.0)
-
-        label_mode = tk.Label(self.inner_frame_1,text="Mode ")
-        label_mode.pack(anchor="se")
-        self.pitch_changing_mode_button = tk.Button(self.inner_frame_1,text=self.pitch_changing_mode,width=6,command=self.pitch_mode)
-        self.pitch_changing_mode_button.pack(anchor="se")
-
-        self.inner_frame_2 = tk.Frame(self.right_frame)
-        self.inner_frame_2.pack(pady=10)
-
-        title_label_2 = tk.Label(self.inner_frame_2, text="Adjust Speed", font=("Arial", 12, "bold"))
-        title_label_2.pack()
-
-        self.speed_scale = tk.Scale(self.inner_frame_2, from_=0.5, to=2, resolution=0.05, orient="horizontal", length=200)
-        self.speed_scale.pack()
-        self.speed_scale.set(1.0)
-
-        label_mode = tk.Label(self.inner_frame_2,text="Mode ")
-        label_mode.pack(anchor="se")
-        self.speed_changing_mode_button = tk.Button(self.inner_frame_2,text="OLA",width=6,command=self.speed_mode)
-        self.speed_changing_mode_button.pack(anchor="se")
-
-        # Waveform visualization at the lower frame
-        self.audio_visualize_image = None
-        self.photo_image = None
-        self.visualization_frame = tk.Label(self.lower_frame)
-        self.visualization_frame.pack(fill='both', expand=True)
-        # Bind the visualization image to a click event to collect the click position
-        self.visualization_frame.bind("<Button-1>", self.on_left_mouse_click_image)
-        self.visualization_frame.bind("<Button-3>", self.on_right_mouse_click_image)
-
-        # Add a progress bar
-        self.progress_bar = ttk.Progressbar(self.lower_frame, orient='horizontal', mode='determinate')
-        self.progress_bar.pack(side='bottom', fill='x', pady=10)
-        self.progress_bar['maximum'] = 1500
-        self.progress_bar.bind("<Button-1>", self.on_left_mouse_click_progressbar)
-
-    def write_to_text_file(self, text):
-        """ Write a text to a file. """
-        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        filename = f"outputText_{timestamp}.txt"
-
-        if os.path.isdir(self.save_dir):
-            file_path = os.path.join(self.save_dir, filename)
-        else:
-            save_dir, ext = os.path.splitext(self.save_dir)
-            file_path = f"{save_dir}_{timestamp}{ext}"
-
-        print(f"Writing text to file: {file_path}")
-        with open(file_path, "w") as f:
-            f.write(text)
-
-    def convert_audio_to_text(self):
-        # Convert your audio array and sample rate to an AudioData object
-        audio_data_int = np.int16(self.audio_array * 32767)
-        audio_data = sr.AudioData(audio_data_int.tobytes(), self.rate, 2)
-
-        # use the speech_recognition library's recognizer to recognize this AudioData object
-        recognizer = sr.Recognizer()
-        try:
-            # sphinx
-            text = recognizer.recognize_sphinx(audio_data, language='en-US')
-            tk.messagebox.showinfo(title='Text', message='The text of the audio: ' + text) 
-            self.write_to_text_file(text)
-            print("Identify Results:", text)
-        except sr.UnknownValueError:
-            print("Unrecognized audio")
-        except sr.RequestError as e:
-            print(f"An error occurred while requesting results from the service: {e}")
-
-    def remove_background_noise(self):
-        if self.audio_array is None or self.audio_sampling_rate is None:
-            print("No audio loaded for noise reduction.")
-            return
-
-        # Check if the original sample rate is supported by WebRTC VAD. If not, resample the audio.
-        supported_rates = [8000, 16000, 32000, 48000]
-        if self.audio_sampling_rate not in supported_rates:
-            print(f"Original sample rate ({self.audio_sampling_rate} Hz) is not supported by WebRTC VAD. Resampling...")
-            # Choose a supported sample rate for resampling. Here we choose 16000 Hz as a default.
-            target_rate = 16000
-            # Resample the audio to the target rate
-            self.audio_array = librosa.resample(self.audio_array, orig_sr=self.audio_sampling_rate, target_sr=target_rate)
-            self.audio_sampling_rate = target_rate
-            print(f"Audio has been resampled to {target_rate} Hz.")
-
-        # Convert audio from float to int16, ensuring compatibility with WebRTC VAD
-        audio_data_int16 = (self.audio_array * 32768).astype(np.int16)
-
-        # Initialize WebRTC VAD
-        vad = webrtcvad.Vad(3)
-
-        # Calculate frame size for VAD (30ms frame size)
-        frame_size = int(self.audio_sampling_rate * 0.03)
-        frames = [audio_data_int16[i:i + frame_size] for i in range(0, len(audio_data_int16), frame_size)]
-
-        vad_mask = []
-        for frame in frames:
-            # Pad the last frame if needed
-            if len(frame) < frame_size:
-                frame = np.pad(frame, (0, frame_size - len(frame)), 'constant', constant_values=0)
-            is_speech = vad.is_speech(frame.tobytes(), self.audio_sampling_rate)
-            vad_mask.extend([is_speech] * frame_size)
-
-        vad_mask = np.array(vad_mask[:len(self.audio_array)])
-        filtered_audio_data = self.audio_array * vad_mask
-
-        # Apply noise reduction
-        try:
-            reduced_noise_audio = nr.reduce_noise(y=filtered_audio_data, sr=self.audio_sampling_rate)
-        except Exception as e:
-            print(f'Error in noise reduction')
-            print(e)
-            return
-
-        self.audio_array = reduced_noise_audio
-        self.plot_waveform()
-        self.update_visualize_image()
-        self.update_progress_bar()
-  
-
-        old_filename = self.selected_filename.split('.')[0]
-        new_filename = old_filename + '_denoised.wav'
-        save_path = os.path.join(self.save_dir, new_filename)
-        # filename already exists
-        audio_id = 0
-        while os.path.exists(save_path):
-            audio_id += 1
-            new_filename = old_filename + f'_denoised({audio_id}).wav'
-            save_path = os.path.join(self.save_dir, new_filename)
-
-        # sf.write(output_filename, reduced_noise_audio, self.audio_sampling_rate)
-        reduced_noise_audio = ReadWrite.waveform_to_frames(reduced_noise_audio)
-        ReadWrite.write_wav(reduced_noise_audio, save_path, self.audio_sampling_rate, 2, 2)
-
-        self.load_all_recordings()
-        print(f"Noise-reduced audio saved as {save_path}.")
 
     def on_listbox_select(self, event):
         widget = event.widget
@@ -994,28 +484,5 @@ class SoundRecorderApp:
                 return
         self.save_button.config(state=tk.DISABLED)
 
-    def save_trimmed_audio(self):
-        old_filename = self.selected_filename.split('.')[0]
-        new_filename = old_filename + '_trimmed.wav'
-        save_path = os.path.join(self.save_dir, new_filename)
-
-        # if the filename already exists
-        audio_id = 0
-        while os.path.exists(save_path):
-            audio_id += 1
-            new_filename = old_filename + f'_trimmed({audio_id}).wav'
-            save_path = os.path.join(self.save_dir, new_filename)
-
-        print(f'The trimmed audio is saved into: {save_path}')
-
-        wav_start_idx = int(self.start_frame / len(self.frames) * self.audio_array.shape[0])
-        wav_end_idx = int(self.end_frame / len(self.frames) * self.audio_array.shape[0])
-        # DONE: replace this with our own function
-        # soundfile.write(save_path, self.audio_array[wav_start_idx:wav_end_idx], samplerate=self.audio_sampling_rate)
-        waveform = ReadWrite.waveform_to_frames(self.audio_array[wav_start_idx:wav_end_idx], sample_rate=self.audio_sampling_rate)
-        ReadWrite.write_wav(waveform, save_path, rate=self.audio_sampling_rate, channels=self.channels)
-
-        # Update the listbox
-        self.load_all_recordings()
 
 
