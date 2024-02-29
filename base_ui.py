@@ -118,7 +118,7 @@ class BaseUI:
         self.progress_bar['maximum'] = 1500
         self.progress_bar.bind("<Button-1>", self.on_left_mouse_click_progressbar)
 
-    def on_listbox_select(self):
+    def on_listbox_select(self, event):
         raise NotImplementedError("Subclass must implement abstract method")
 
     def change_plot_style(self):
@@ -151,12 +151,12 @@ class BaseUI:
     def speed_mode(self):
         raise NotImplementedError("Subclass must implement abstract method")
 
-    def on_left_mouse_click_image(self):
+    def on_left_mouse_click_image(self, event):
         raise NotImplementedError("Subclass must implement abstract method")
 
-    def on_right_mouse_click_image(self):
+    def on_right_mouse_click_image(self, event):
         raise NotImplementedError("Subclass must implement abstract method")
 
-    def on_left_mouse_click_progressbar(self):
+    def on_left_mouse_click_progressbar(self, event):
         raise NotImplementedError("Subclass must implement abstract method")
 
