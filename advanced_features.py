@@ -126,6 +126,11 @@ class FullSoundRecorder(BasicSoundRecorder):
         y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
 
         return y_shifted
+    
+    def speed_shift(self, frames, factor):
+        indices = np.round( np.arange(0, len(frames), factor) )
+        indices = np.clip(indices, 0, len(frames) - 1).astype(int)
+        return frames[ indices.astype(int) ]
 
     def change_pitch(self, frames, n_steps):
         arr = np.frombuffer(b''.join(frames), dtype=np.int16)
@@ -169,42 +174,39 @@ class FullSoundRecorder(BasicSoundRecorder):
             factor = 2 ** (1.0 * n_steps / 12.0)
             window_size = 2 ** 13
             h = 2 ** 11
-            stretched = self.stretch(y, 1.0 / factor, window_size, h)
-            frames_array = self.speedx(stretched[window_size:], factor)
+            stretched = self.audio_stretch(y, 1.0 / factor, window_size, h)
+            frames_array = self.speed_shift(stretched[window_size:], factor)
             frames_array = np.frombuffer(b''.join(frames_array), dtype=np.int16)
             bytes_arr = [frames_array[i:i + self.chunk_size].tobytes() for i in range(0, len(frames_array), self.chunk_size)]
             return bytes_arr
+        
+    def audio_stretch(self, frames, stretch_factor, window_len, hop_distance):
+        # Initialize phase array and window function
+        initial_phase = np.zeros(window_len)
+        window = np.hanning(window_len)
+        stretched_frames = np.zeros(int(len(frames) / stretch_factor + window_len), dtype=np.complex128)
 
-    def speedx(self, sound_array, factor):
-        indices = np.round( np.arange(0, len(sound_array), factor) )
-        indices = indices[indices < len(sound_array)].astype(int)
-        return sound_array[ indices.astype(int) ]
+        for idx in np.arange(0, len(frames) - (window_len + hop_distance), int(round(hop_distance * stretch_factor))):
+            # Extract two overlapping segments
+            segment_one = frames[int(idx): int(idx + window_len)]
+            segment_two = frames[int(idx + hop_distance): int(idx + window_len + hop_distance)]
 
-    def stretch(self, sound_array, f, window_size, h):
-        phase  = np.zeros(window_size)
-        hanning_window = np.hanning(window_size)
-        result = np.zeros( int(len(sound_array) /f + window_size), dtype=np.complex128)
+            # FFT and phase manipulation
+            fft_one = np.fft.fft(window * segment_one)
+            fft_two = np.fft.fft(window * segment_two)
+            safe_divisor = 1e-10  # To avoid division by zero
+            initial_phase += np.angle(fft_two / (fft_one + safe_divisor)) % (2 * np.pi)
+            rephased_segment = np.fft.ifft(np.abs(fft_two) * np.exp(1j * initial_phase))
 
-        for i in np.arange(0, len(sound_array)-(window_size+h), round(h*f)):
+            # Accumulate the processed segment
+            result_idx = int(idx / stretch_factor)
+            stretched_frames[result_idx: result_idx + window_len] += window * rephased_segment
 
-            # two potentially overlapping subarrays
-            a1 = sound_array[int(i): int(i + window_size)]
-            a2 = sound_array[int(i + h): int(i + window_size + h)]
+        # Normalize to 16-bit range
+        stretched_frames = (2**(16-4) * stretched_frames / np.max(np.abs(stretched_frames)))
 
-            # resynchronize the second array on the first
-            s1 =  np.fft.fft(hanning_window * a1)
-            s2 =  np.fft.fft(hanning_window * a2)
-            epsilon = 1e-10  # A small value to prevent division by zero
-            phase = (phase + np.angle(s2 / (s1 + epsilon))) % (2 * np.pi)
-            a2_rephased = np.fft.ifft(np.abs(s2)*np.exp(1j*phase))
+        return np.real(stretched_frames).astype('int16')
 
-            # add to result
-            i2 = int(i/f)
-            result[i2 : i2 + window_size] += hanning_window*a2_rephased 
-
-        result = ((2**(16-4)) * result/result.max()) # normalize (16bit)
-
-        return np.real(result).astype('int16')
 
     def pitch_mode(self):
         modes = ["INTERP", "LIBROSA", "FFT"]
