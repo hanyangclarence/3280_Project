@@ -10,10 +10,10 @@ class BaseUI:
         self.master = master
         master.title('Sound Recorder')
 
-        master.geometry('1500x900')  # Width x Height
+        master.geometry('1500x1000')  # Width x Height
 
         # Create the upper and lower frames
-        self.upper_frame = tk.Frame(master, height=400, width=1500)
+        self.upper_frame = tk.Frame(master, height=500, width=1500)
         self.upper_frame.pack(side="top", fill="both", expand=True)
         self.upper_frame.pack_propagate(False)  # Prevent the frame from resizing to fit its contents
 

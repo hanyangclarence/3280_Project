@@ -226,37 +226,41 @@ class FullSoundRecorder(BasicSoundRecorder):
         win_size = self.chunk_size * 8
         if self.speed_changing_mode == "PV-TSM":
             y = arr.astype(np.float32)
+            # see the procedure of PV-TSM in self.stretch()
             new_arr = self.stretch(y, speed, win_size, win_size//4)
         else:
-            hs = int(win_size * 0.5)
+            # OLA and WSOLA
+            hs = win_size // 2
             ha = int(speed * hs)
             dmax = win_size // 8 # dmax cannot be too large, or 0.5x will produce noise.
-            # generate the hanning window
+            # calculate the Hann window
             hanning_window = [0] * win_size
             for i in range(win_size):
                 hanning_window[i] = 0.5 - 0.5 * math.cos(2 * math.pi * i /(win_size - 1))
             old_pos = 0
             new_pos = 0
-            while old_pos < len(arr) - win_size and new_pos < len(new_arr) - win_size:
-                for i in range(win_size):
-                    new_arr[new_pos+i] += arr[old_pos+i] * hanning_window[i]
-                # update old_pos, there are 2 ways
+            delta = 0
+            while old_pos + delta < len(arr) - win_size and new_pos < new_length - win_size:
                 if self.speed_changing_mode == "OLA":
-                    # basic part: straight-forward OLA
-                    old_pos += ha
+                    for i in range(win_size):
+                        new_arr[new_pos+i] += arr[old_pos+i] * hanning_window[i]
                 else:
+                    for i in range(win_size):
+                        new_arr[new_pos + i] += arr[old_pos + i + delta] * hanning_window[i]
+                if self.speed_changing_mode == "WSOLA":
                     # enhanced part: WSOLA, find the position of the most similar frame within (old_pos+ha-dmax,old_pos+ha+dmax).
                     sp = max(0, old_pos + ha - dmax)
                     ep = min(len(arr), old_pos + ha + dmax + win_size)
                     # metric of similarity: cross-correlation
-                    correlations = np.correlate(arr[sp:ep], arr[old_pos + hs:old_pos + hs + win_size])
+                    correlations = np.correlate(arr[sp:ep], arr[old_pos + delta + hs:old_pos + delta + hs + win_size])
                     max_idx, max_value = 0, correlations[0]
                     for i, value in enumerate(correlations):
                         if value > max_value:
                             max_idx, max_value = i, value
-                    old_pos = sp + max_idx
-                # update new_pos
+                    delta = max_idx - min(dmax, old_pos + ha)
+                # update new_pos and old_pos
                 new_pos += hs
+                old_pos += ha
         new_arr = new_arr.astype(np.int16)
         tobytes = new_arr.tobytes()
         bytes_arr = [tobytes[i:i+4096] for i in range(0, len(tobytes), 4096)]
