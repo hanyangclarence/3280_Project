@@ -1,5 +1,5 @@
 import tkinter as tk
-from sound_recorder import SoundRecorderApp
+from advanced_features import SoundRecorderApp
 from configs import configs
 
 
