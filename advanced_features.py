@@ -255,38 +255,6 @@ class FullSoundRecorder(BasicSoundRecorder):
             self.speed_changing_mode = "OLA"
             self.speed_changing_mode_button.config(text="OLA")
 
-    # def adjust_pitch(self):
-    #     n_steps = self.n_steps.get()
-    #     print(f"Adjusting pitch by {n_steps} steps.")
-
-    #     if self.audio_array is None or self.audio_sampling_rate is None:
-    #         print("No audio loaded for noise reduction.")
-    #         return
-
-    #     self.audio_array = librosa.effects.pitch_shift(y=self.audio_array, sr=self.audio_sampling_rate, n_steps=n_steps)
-    #     # self.audio_array = 
-    #     try:
-    #         self.plot_waveform()
-    #         self.update_visualize_image()
-    #         self.update_progress_bar()
-
-    #         if hasattr(self, 'selected_filename'):
-    #             original_filename = self.selected_filename
-    #         else:
-    #             original_filename = f"audio_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-
-    #         # Save the processed audio with a unique filename
-    #         output_filename = os.path.join(self.save_dir, f"Pitch_shifted_{original_filename}")
-
-    #         # sf.write(output_filename, reduced_noise_audio, self.audio_sampling_rate)
-    #         pitch_shifted_audio = ReadWrite.waveform_to_frames(self.audio_array)
-    #         ReadWrite.write_wav(pitch_shifted_audio, output_filename, self.audio_sampling_rate, 1, 2)
-    #         self.load_all_recordings()
-    #         print(f"Pitch-shifted audio saved as {output_filepath}.")
-    #     except Exception as e:
-    #         # Catching a general exception for demonstration; specify your exception
-    #         print("Caught exception while trying to shift pitch:", e)
-
     def write_to_text_file(self, text):
         """ Write a text to a file. """
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
