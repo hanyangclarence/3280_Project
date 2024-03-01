@@ -228,8 +228,8 @@ class FullSoundRecorder(BasicSoundRecorder):
         win_size = self.chunk_size * 8
         if self.speed_changing_mode == "FFT":
             y = arr.astype(np.float32)
-            # see the procedure of FFT in self.stretch()
-            new_arr = self.stretch(y, speed, win_size, win_size//4)
+            # see the procedure of FFT in self.audio_stretch()
+            new_arr = self.audio_stretch(y, speed, win_size, win_size//4)
         else:
             # OLA and WSOLA
             hs = win_size // 2
@@ -247,10 +247,9 @@ class FullSoundRecorder(BasicSoundRecorder):
                     for i in range(win_size):
                         new_arr[new_pos+i] += arr[old_pos+i] * hanning_window[i]
                 else:
+                    # enhanced part: WSOLA, find the position of the most similar frame within (old_pos+ha-dmax,old_pos+ha+dmax).
                     for i in range(win_size):
                         new_arr[new_pos + i] += arr[old_pos + i + delta] * hanning_window[i]
-                if self.speed_changing_mode == "WSOLA":
-                    # enhanced part: WSOLA, find the position of the most similar frame within (old_pos+ha-dmax,old_pos+ha+dmax).
                     sp = max(0, old_pos + ha - dmax)
                     ep = min(len(arr), old_pos + ha + dmax + win_size)
                     # metric of similarity: cross-correlation
