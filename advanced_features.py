@@ -224,9 +224,9 @@ class FullSoundRecorder(BasicSoundRecorder):
         new_length = int(len(arr) / speed)
         new_arr = np.zeros(new_length, dtype=np.float64)
         win_size = self.chunk_size * 8
-        if self.speed_changing_mode == "PV-TSM":
+        if self.speed_changing_mode == "FFT":
             y = arr.astype(np.float32)
-            # see the procedure of PV-TSM in self.stretch()
+            # see the procedure of FFT in self.stretch()
             new_arr = self.stretch(y, speed, win_size, win_size//4)
         else:
             # OLA and WSOLA
@@ -271,8 +271,8 @@ class FullSoundRecorder(BasicSoundRecorder):
             self.speed_changing_mode = "WSOLA"
             self.speed_changing_mode_button.config(text="WSOLA")
         elif self.speed_changing_mode == "WSOLA":
-            self.speed_changing_mode = "PV-TSM"
-            self.speed_changing_mode_button.config(text="PV-TSM")
+            self.speed_changing_mode = "FFT"
+            self.speed_changing_mode_button.config(text="FFT")
         else:
             self.speed_changing_mode = "OLA"
             self.speed_changing_mode_button.config(text="OLA")
