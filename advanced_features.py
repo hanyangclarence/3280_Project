@@ -119,14 +119,14 @@ class FullSoundRecorder(BasicSoundRecorder):
         self.load_selected_audio(filename=new_filename)
         self.setup_buttons_for_playable_state()
 
-    def pitch_interp(self, y, sr, n_steps):
+    def pitch_interp(self, frames, n_steps):
         # Time-domain pitch shifting using FFT
-        n = len(y)
-        factor = 2 ** (1.0 * n_steps / 12.0)  # Frequency scaling factor
-        y_shifted = np.interp(np.arange(0, n, factor), np.arange(n), y)
+        n = len(frames)
+        factor = 2 ** (1.0 * n_steps / 12.0)  # Frequenccy scaling factor
+        frames_shifted = np.interp(np.arange(0, n, factor), np.arange(n), frames)
 
-        return y_shifted
-    
+        return frames_shifted
+
     def speed_shift(self, frames, factor):
         indices = np.round( np.arange(0, len(frames), factor) )
         indices = np.clip(indices, 0, len(frames) - 1).astype(int)
@@ -141,10 +141,9 @@ class FullSoundRecorder(BasicSoundRecorder):
             # librosa's speed changing method
             y = librosa.effects.time_stretch(y,rate=1/(2 ** (1.0 * n_steps / 12.0)))
             sr = self.audio_sampling_rate
-            original_length = len(y)
             try:
                 # Perform pitch shifting using FFT
-                y_shifted = self.pitch_interp(y, sr, n_steps)
+                y_shifted = self.pitch_interp(y, n_steps)
 
                 # Convert back to int16
                 y_shifted_int = y_shifted.astype(np.int16)
