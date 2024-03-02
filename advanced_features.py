@@ -120,9 +120,9 @@ class FullSoundRecorder(BasicSoundRecorder):
         self.setup_buttons_for_playable_state()
 
     def pitch_interp(self, frames, n_steps):
-        # Time-domain pitch shifting using FFT
+        # Time-domain pitch shifting using interpolation
         n = len(frames)
-        factor = 2 ** (1.0 * n_steps / 12.0)  # Frequenccy scaling factor
+        factor = 2 ** (1.0 * n_steps / 12.0)  # Frequency scaling factor
         frames_shifted = np.interp(np.arange(0, n, factor), np.arange(n), frames)
 
         return frames_shifted
@@ -136,19 +136,17 @@ class FullSoundRecorder(BasicSoundRecorder):
         arr = np.frombuffer(b''.join(frames), dtype=np.int16)
         y = arr.astype(np.float32)
         if self.pitch_changing_mode == "INTERP":
-            # our speed changing method
+            #c
             # frames = self.change_speed(1/(2 ** (1.0 * n_steps / 12.0)),frames)
             # librosa's speed changing method
             y = librosa.effects.time_stretch(y,rate=1/(2 ** (1.0 * n_steps / 12.0)))
             sr = self.audio_sampling_rate
             try:
-                # Perform pitch shifting using FFT
+                # Perform pitch shifting using interpolation
                 y_shifted = self.pitch_interp(y, n_steps)
-
                 # Convert back to int16
                 y_shifted_int = y_shifted.astype(np.int16)
-
-                # Splitting the shifted audio into frames
+                # Splitting the shifted audio by our defined chunk_size into frames
                 bytes_arr = [y_shifted_int[i:i + self.chunk_size].tobytes() for i in range(0, len(y_shifted_int), self.chunk_size)]
                 return bytes_arr
             except Exception as e:
@@ -159,10 +157,8 @@ class FullSoundRecorder(BasicSoundRecorder):
             try:
                 # Pitch shifting using librosa
                 y_shifted = librosa.effects.pitch_shift(y=y, sr=sr, n_steps=n_steps)
-
                 # Convert back to int16
                 y_shifted_int = y_shifted.astype(np.int16)
-
                 # Splitting the shifted audio into frames
                 bytes_arr = [y_shifted_int[i:i + self.chunk_size].tobytes() for i in range(0, len(y_shifted_int), self.chunk_size)]
                 return bytes_arr
@@ -170,7 +166,7 @@ class FullSoundRecorder(BasicSoundRecorder):
                 print(f"Error occurred during pitch shifting: {str(e)}")
                 return frames  # Return original frames if an error occurs
         else:
-            factor = 2 ** (1.0 * n_steps / 12.0)
+            factor = 2 ** (1.0 * n_steps / 12.0) # Frequency scaling factor
             window_size = 2 ** 13
             h = 2 ** 11
             stretched = self.audio_stretch(y, 1.0 / factor, window_size, h)
@@ -186,9 +182,13 @@ class FullSoundRecorder(BasicSoundRecorder):
         stretched_frames = np.zeros(int(len(frames) / stretch_factor + window_len), dtype=np.complex128)
 
         for idx in np.arange(0, len(frames) - (window_len + hop_distance), int(round(hop_distance * stretch_factor))):
-            # Extract two overlapping segments
-            segment_one = frames[int(idx): int(idx + window_len)]
-            segment_two = frames[int(idx + hop_distance): int(idx + window_len + hop_distance)]
+            # Calculate the start indices for the two segments
+            start_idx_one = idx
+            start_idx_two = idx + int(hop_distance)
+            
+            # Extract the two overlapping segments using calculated start indices
+            segment_one = frames[start_idx_one: start_idx_one + window_len]
+            segment_two = frames[start_idx_two: start_idx_two + window_len]
 
             # FFT and phase manipulation
             fft_one = np.fft.fft(window * segment_one)
@@ -205,7 +205,6 @@ class FullSoundRecorder(BasicSoundRecorder):
         stretched_frames = (2**(16-4) * stretched_frames / np.max(np.abs(stretched_frames)))
 
         return np.real(stretched_frames).astype('int16')
-
 
     def pitch_mode(self):
         modes = ["INTERP", "LIBROSA", "FFT"]
@@ -334,17 +333,21 @@ class FullSoundRecorder(BasicSoundRecorder):
 
         # Calculate frame size for VAD (30ms frame size)
         frame_size = int(self.audio_sampling_rate * 0.03)
-        frames = [audio_data_int16[i:i + frame_size] for i in range(0, len(audio_data_int16), frame_size)]
+        num_frames = len(audio_data_int16) // frame_size + (1 if len(audio_data_int16) % frame_size else 0)
 
-        vad_mask = []
-        for frame in frames:
-            # Pad the last frame if needed
-            if len(frame) < frame_size:
-                frame = np.pad(frame, (0, frame_size - len(frame)), 'constant', constant_values=0)
+        vad_mask = np.zeros(len(audio_data_int16), dtype=bool)
+
+        for i in range(num_frames):
+            start_idx = i * frame_size
+            end_idx = start_idx + frame_size
+            # Handle the last frame which might be shorter than `frame_size`
+            frame = audio_data_int16[start_idx:end_idx] if end_idx <= len(audio_data_int16) else np.pad(
+                audio_data_int16[start_idx:], (0, frame_size - len(audio_data_int16[start_idx:])), 'constant', constant_values=0)
             is_speech = vad.is_speech(frame.tobytes(), self.audio_sampling_rate)
-            vad_mask.extend([is_speech] * frame_size)
+            vad_mask[start_idx:start_idx + len(frame)] = is_speech
 
-        vad_mask = np.array(vad_mask[:len(self.audio_array)])
+        # Ensure `vad_mask` is the same length as `self.audio_array` before element-wise multiplication
+        vad_mask = np.resize(vad_mask, len(self.audio_array))
         filtered_audio_data = self.audio_array * vad_mask
 
         # Apply noise reduction
